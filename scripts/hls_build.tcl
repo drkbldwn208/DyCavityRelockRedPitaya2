@@ -1,7 +1,7 @@
 open_project dy_cavity_relocker_2
 set_top dy_cavity_relocker_2
 
-set source_files [glob ../../src/*.cpp ../../src/*.h]
+set source_files [glob ../../src/*.cpp ../../src/*.h ../../src/*.hpp]
 
 foreach file $source_files {
     add_files $file
@@ -9,12 +9,12 @@ foreach file $source_files {
 
 open_solution "solution1" -flow_target vivado
 
-set_part {xc7z020clg400-1}
+set_part {xc7z010clg400-1}
 
 create_clock -period 8 -name default
 
 csynth_design
 
-export_design -format ip_catalog -output ../ip_repo/relocker_ip.zip
+export_design -format ip_catalog -output ../ip_repo/relocker_2_ip.zip
 
 exit
