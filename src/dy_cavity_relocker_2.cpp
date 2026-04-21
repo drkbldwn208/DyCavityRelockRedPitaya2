@@ -1,85 +1,74 @@
 #include "dy_cavity_relocker_2.h"
 #include "hinf_filter.hpp"
 
-void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
-                          hls::stream<axis_t> &dac_out,
-                          bool gpio_in,
-                          int servo_offset,
-                          int servo_arm)
+static void read_adc(hls::stream<axis_t> &adc_in,
+                     hls::stream<short> &ch1_out,
+                     hls::stream<short> &ch2_out)
 {
-  #pragma HLS PIPELINE II = 4
-  #pragma HLS INTERFACE axis port = adc_in
-  #pragma HLS INTERFACE axis port = dac_out
-  #pragma HLS INTERFACE s_axilite port = servo_offset
-  #pragma HLS INTERFACE s_axilite port = servo_arm
-  #pragma HLS INTERFACE ap_none port = gpio_in
-  #pragma HLS INTERFACE s_axilite port = return
+  #pragma HLS PIPELINE II=1
+  axis_t val_adc = adc_in.read();
+  ch1_out.write((short)(val_adc.data & 0xFFFF));         // Channel A
+  ch2_out.write((short)((val_adc.data >> 16) & 0xFFFF)); // Channel B
+}
 
+static void decimate_by_4(hls::stream<short> &in,
+                         hls::stream<short> &out) 
+{
+  #pragma HLS PIPELINE II=1
+  static int32_t acc = 0;
+  static ap_uint<2> count = 0;
+  short val_in = in.read();
+  acc += val_in;
+
+  if (count == 3) {
+    out.write((short)(acc >> 2)); // Output the average of 4 samples
+    acc = 0;
+  }
+  count++;
+}
+
+static void hinf_path(hls::stream<short> &ch1_in, 
+                      hls::stream<short> &dac1_out) {
+  #pragma HLS PIPELINE II=4
+  
+  static HinfFilter controller;
+  short averaged = ch1_in.read();
+  sig_t u_in;
+  
+  u_in.range() = averaged;
+  dac1_out.write((short)controller.process(u_in).range());
+}
+static void servo_path(hls::stream<short> &ch2_in, 
+                       hls::stream<short> &dac2_out,
+                       bool gpio_in,
+                       int servo_offset,
+                       int servo_arm) {
+  #pragma HLS PIPELINE II=1
+  
   static State current_state = IDLE;
   bool state_toggle = false;
 
-  static HinfFilter controller;
-
-  static ap_uint<2> decim_cnt = 0;
-  static int32_t adc1_acc = 0;
-  static short hinf_out_hold = 0;
-
   fsm_receiver(gpio_in, state_toggle);
 
-  axis_t val_adc = adc_in.read();
-  short val_adc1 = (short)(val_adc.data & 0xFFFF);         // Channel A
-  short val_adc2 = (short)((val_adc.data >> 16) & 0xFFFF); // Right shift reads the upper 16 bits, so this is channel B
-
-  /*
-  Channel 1 handling: x4 decimation and H-infinity filtering
-  */
-  adc1_acc += val_adc1;
-
-  if (decim_cnt == 3) {
-    short averaged_adc1 = (short)(adc1_acc >> 2); // Divide by 4 to get the average
-    adc1_acc = 0;
-
-    sig_t u_in;
-    u_in.range() = averaged_adc1;
-
-    sig_t y_out = controller.process(u_in);
-
-    hinf_out_hold = (short)y_out.range(); // Hold the H-infinity output until the next decimated sample is ready
-
-  }
-  decim_cnt++;
-
-  axis_t val_dac;
-  short dac_1_out = hinf_out_hold; // Output the held H-infinity output to DAC channel 1
-  
-  /*
-  Channel 2 handling: Cavity relocking servo logic based on the state machine
-  */
-
-  short dac_2_out = 0;
-
+  short val_adc2 = ch2_in.read();
   static short held_voltage = 0;
   static short error_signal = 0;
+  short out=0;
 
   switch (current_state)
   {
   case IDLE:
-    dac_2_out = servo_offset; // Output the servo offset to DAC channel 2 in IDLE state
-    
-    if (servo_arm)
-    {
-      if (state_toggle)
-      {
-        current_state = SERVO;
-        held_voltage = val_adc2; // Capture the current ADC value to hold in SERVO state
-      }
+    out=servo_offset; // Output the servo offset to DAC channel 2 in IDLE state
+    if (servo_arm && state_toggle) {
+      current_state = SERVO;
+      held_voltage = val_adc2; // Capture the current ADC value to hold in SERVO state
     }
     break;
 
 
   case SERVO:
     error_signal = val_adc2 - held_voltage;
-    dac_2_out = servo_offset + (error_signal >> GAIN_RIGHT_SHIFT); // Output the servo offset plus the error signal to DAC channel 2 in SERVO state
+    out = (servo_offset + (error_signal >> GAIN_RIGHT_SHIFT)); // Output the servo offset plus the error signal to DAC channel 2 in SERVO state
     
     if (state_toggle)
     {
@@ -88,10 +77,66 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
     break;
   }
 
+  dac2_out.write(out);
+}
+
+static void hold_4(hls::stream<short> &in,
+                   hls::stream<short> &out) 
+{
+  #pragma HLS PIPELINE II=1
+  static short hold_val = 0;
+  static ap_uint<2> count = 0;
+
+  if (count == 0) {
+    hold_val = in.read();
+  }
+  out.write(hold_val);
+  count++;
+}
+
+static void pack_dac(hls::stream<short> &dac1_in,
+                     hls::stream<short> &dac2_in,
+                     hls::stream<axis_t> &dac_out)
+{
+  #pragma HLS PIPELINE II=1
+  axis_t val_dac;
+  short dac_1_out = dac1_in.read();
+  short dac_2_out = dac2_in.read();
   val_dac.data = (((uint32_t)dac_2_out & 0xFFFF) << 16) | ((uint32_t)dac_1_out & 0xFFFF);
   val_dac.keep = 0xF;
   val_dac.strb = 0xF;
   val_dac.last = 0;
 
   dac_out.write(val_dac);
+}
+
+
+void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
+                          hls::stream<axis_t> &dac_out,
+                          bool gpio_in,
+                          int servo_offset,
+                          int servo_arm)
+{
+  #pragma HLS DATAFLOW
+  #pragma HLS INTERFACE axis port = adc_in
+  #pragma HLS INTERFACE axis port = dac_out
+  #pragma HLS INTERFACE s_axilite port = servo_offset
+  #pragma HLS INTERFACE s_axilite port = servo_arm
+  #pragma HLS INTERFACE ap_none port = gpio_in
+  #pragma HLS INTERFACE s_axilite port = return
+
+  hls::stream<short> ch1, ch1_decim, ch2, dac1_raw, dac1, dac2;
+  #pragma HLS STREAM variable = ch1 depth = 8
+  #pragma HLS STREAM variable = ch1_decim depth = 4
+  #pragma HLS STREAM variable = ch2 depth = 8
+  #pragma HLS STREAM variable = dac1_raw depth = 4
+  #pragma HLS STREAM variable = dac1 depth = 8
+  #pragma HLS STREAM variable = dac2 depth = 8
+  
+  read_adc(adc_in, ch1, ch2);
+  decimate_by_4(ch1, ch1_decim);
+  hinf_path(ch1_decim, dac1_raw);
+  hold_4(dac1_raw, dac1);
+  servo_path(ch2, dac2, gpio_in, servo_offset, servo_arm);
+  pack_dac(dac1, dac2, dac_out);
 }
