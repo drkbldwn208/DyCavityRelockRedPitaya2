@@ -101,6 +101,7 @@ create_bd_design "system"
   # Create instance: axis_clock_converter_0, and set properties
   set axis_clock_converter_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:axis_clock_converter:1.1 axis_clock_converter_0 ]
   set_property -dict [list \
+    CONFIG.ACLK_RATIO {1:2} \
     CONFIG.IS_ACLK_ASYNC {0} \
     CONFIG.TDATA_NUM_BYTES {4} \
   ] $axis_clock_converter_0
