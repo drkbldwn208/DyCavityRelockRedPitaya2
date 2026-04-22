@@ -101,13 +101,13 @@ set_property PACKAGE_PIN F20 [get_ports {dac_dat_o[11]}]
 set_property PACKAGE_PIN D20 [get_ports {dac_dat_o[12]}]
 set_property PACKAGE_PIN D19 [get_ports {dac_dat_o[13]}]
 
-set_property IOSTANDARD LVCMOS33 [get_ports dac_*_o]
-set_property SLEW FAST [get_ports dac_*_o]
-set_property DRIVE 8 [get_ports dac_*_o]
+set_property IOSTANDARD LVCMOS33 [get_ports dac_*_0]
+set_property SLEW FAST [get_ports dac_*_0]
+set_property DRIVE 8 [get_ports dac_*_0]
 
 
-set_property PACKAGE_PIN M17 [get_ports dac_wrt_o]
-set_property PACKAGE_PIN N16 [get_ports dac_sel_o]
-set_property PACKAGE_PIN M18 [get_ports dac_clk_o]
-set_property PACKAGE_PIN N15 [get_ports dac_rst_o]
+set_property PACKAGE_PIN M17 [get_ports dac_wrt_0]
+set_property PACKAGE_PIN N16 [get_ports dac_sel_0]
+set_property PACKAGE_PIN M18 [get_ports dac_clk_0]
+set_property PACKAGE_PIN N15 [get_ports dac_rst_0]
 
