@@ -21,12 +21,17 @@ create_bd_design "system"
   # Create ports
   set adc_enc_p_o [ create_bd_port -dir O adc_enc_p_o ]
   set adc_clk_n_i [ create_bd_port -dir I adc_clk_n_i ]
-  set dac_dat_o [ create_bd_port -dir O -from 13 -to 0 dac_dat_o ]
   set adc_enc_n_o [ create_bd_port -dir O adc_enc_n_o ]
   set adc_csn_o [ create_bd_port -dir O adc_csn_o ]
   set adc_dat_a_i [ create_bd_port -dir I -from 15 -to 0 adc_dat_a_i ]
   set adc_dat_b_i [ create_bd_port -dir I -from 15 -to 0 adc_dat_b_i ]
   set adc_clk_p_i [ create_bd_port -dir I adc_clk_p_i ]
+  set dac_clk_o [ create_bd_port -dir O dac_clk_o ]
+  set dac_rst_o [ create_bd_port -dir O dac_rst_o ]
+  set dac_sel_o [ create_bd_port -dir O dac_sel_o ]
+  set dac_wrt_o [ create_bd_port -dir O dac_wrt_o ]
+  set dac_dat_o [ create_bd_port -dir O -from 13 -to 0 dac_dat_o ]
+
 
   # Create instance: processing_system7_0, and set properties
   set processing_system7_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7:5.5 processing_system7_0 ]
@@ -125,6 +130,10 @@ create_bd_design "system"
   connect_bd_net -net adc_dat_b_i_1 [get_bd_ports adc_dat_b_i] [get_bd_pins axis_red_pitaya_adc_0/adc_dat_b]
   connect_bd_net -net axis_red_pitaya_adc_0_adc_csn [get_bd_pins axis_red_pitaya_adc_0/adc_csn] [get_bd_ports adc_csn_o]
   connect_bd_net -net axis_red_pitaya_dac_0_dac_dat [get_bd_pins axis_red_pitaya_dac_0/dac_dat] [get_bd_ports dac_dat_o]
+  connect_bd_net -net axis_red_pitaya_dac_0_dac_clk [get_bd_pins axis_red_pitaya_dac_0/dac_clk] [get_bd_ports dac_clk_o]
+  connect_bd_net -net axis_red_pitaya_dac_0_dac_rst [get_bd_pins axis_red_pitaya_dac_0/dac_rst] [get_bd_ports dac_rst_o]
+  connect_bd_net -net axis_red_pitaya_dac_0_dac_sel [get_bd_pins axis_red_pitaya_dac_0/dac_sel] [get_bd_ports dac_sel_o]
+  connect_bd_net -net axis_red_pitaya_dac_0_dac_wrt [get_bd_pins axis_red_pitaya_dac_0/dac_wrt] [get_bd_ports dac_wrt_o]
   connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins processing_system7_0/M_AXI_GP0_ACLK] [get_bd_pins axis_red_pitaya_adc_0/aclk] [get_bd_pins proc_sys_reset_0/slowest_sync_clk] [get_bd_pins dy_cavity_relocker_2_0/ap_clk] [get_bd_pins axis_clock_converter_0/s_axis_aclk] [get_bd_pins ps7_0_axi_periph/ACLK] [get_bd_pins ps7_0_axi_periph/S00_ACLK] [get_bd_pins ps7_0_axi_periph/M00_ACLK]
   connect_bd_net -net clk_wiz_0_clk_out2 [get_bd_pins clk_wiz_0/clk_out2] [get_bd_pins axis_red_pitaya_dac_0/ddr_clk]
   connect_bd_net -net clk_wiz_0_clk_out3 [get_bd_pins clk_wiz_0/clk_out3] [get_bd_pins axis_red_pitaya_dac_0/wrt_clk]
