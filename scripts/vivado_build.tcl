@@ -4,7 +4,7 @@ set_property ip_repo_paths {../hls_workspace/dy_cavity_relocker_2/solution1/impl
 update_ip_catalog
 
 add_files -norecurse ../../extern/red-pitaya-notes/cores/axis_red_pitaya_adc.v
-add_files -norecurse ../../extern/red-pitaya-notes/cores/axis_red_pitaya_dac.v
+add_files -norecurse ../../src/axis_red_pitaya_dac.v
 
 add_files -fileset constrs_1 -norecurse ../../src/constraints.xdc
 
