@@ -27,6 +27,34 @@ print(f"Controller order: {len(p_d)}   fs: {fs/1e6:.4f} MHz\n")
 
 # Create SOS directly from the exact discrete ZPK
 sos = sig.zpk2sos(z_d, p_d, k_d, pairing='nearest')
+# After zpk2sos, remove sections with poles near z = -1
+# Replace the "drop sections with poles near z=-1" block with:
+# Stabilize any near-unit-circle poles by contracting inward
+# MAX_POLE_MAG = 0.998  # Target maximum pole radius
+
+# for i, s in enumerate(sos):
+#     poles = np.roots([1.0, s[4], s[5]])
+#     max_mag = max(abs(p) for p in poles)
+#     if max_mag > MAX_POLE_MAG:
+#         contract = MAX_POLE_MAG / max_mag
+#         # Contracting poles: if poles are p1,p2 then new polynomial is
+#         # (z - p1*c)(z - p2*c) = z^2 - (p1+p2)*c*z + p1*p2*c^2
+#         # = z^2 + a1*contract*z + a2*contract^2
+#         new_a1 = s[4] * contract
+#         new_a2 = s[5] * contract**2
+        
+#         # Preserve DC gain: adjust numerator to compensate
+#         old_dc_den = 1.0 + s[4] + s[5]
+#         new_dc_den = 1.0 + new_a1 + new_a2
+#         num_scale = new_dc_den / old_dc_den if abs(old_dc_den) > 1e-12 else 1.0
+        
+#         sos[i] = [s[0]*num_scale, s[1]*num_scale, s[2]*num_scale,
+#                   1.0, new_a1, new_a2]
+        
+#         new_poles = np.roots([1.0, new_a1, new_a2])
+#         print(f"  Section {i}: pole |z|={max_mag:.6f} → {max(abs(p) for p in new_poles):.6f} "
+#               f"(contracted by {(1-contract)*100:.2f}%)")
+
 n_sec = sos.shape[0]
 
 print(f"\n=== SOS: {n_sec} sections ===")

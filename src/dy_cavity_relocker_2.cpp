@@ -5,7 +5,7 @@ static void read_adc(hls::stream<axis_t> &adc_in,
                      hls::stream<short> &ch1_out,
                      hls::stream<short> &ch2_out)
 {
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 128; i++) {
     #pragma HLS PIPELINE II=1
     axis_t val_adc = adc_in.read();
     ch1_out.write((short)(val_adc.data & 0xFFFF));         // Channel A
@@ -16,13 +16,25 @@ static void read_adc(hls::stream<axis_t> &adc_in,
 static void decimate_by_4(hls::stream<short> &in,
                          hls::stream<short> &out) 
 {
-  int32_t acc = 0;
-  
-  for (int i = 0; i < 4; i++) {
-    #pragma HLS PIPELINE II=1
-    acc += in.read();
-  }
+  for (int j = 0; j < 32; j++) {
+    int32_t acc = 0;
+    for (int i = 0; i < 4; i++) {
+      #pragma HLS PIPELINE II=1
+      acc += in.read();
+    }
   out.write((short)(acc >> 2)); // Output the average of 4 samples
+  }
+}
+
+static void decimate_by_32(hls::stream<short> &in,
+                            hls::stream<short> &out)
+{
+    long acc = 0;
+    for (int i = 0; i < 32; i++) {
+        #pragma HLS PIPELINE II=1
+        acc += in.read();
+    }
+    out.write((short)(acc >> 5));
 }
 
 static void hinf_path(hls::stream<short> &ch1_in, 
@@ -47,7 +59,7 @@ static void servo_path(hls::stream<short> &ch2_in,
   static short held_voltage = 0;
   static short error_signal = 0;
   
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 128; i++) {
     #pragma HLS PIPELINE II=1
     
 
@@ -85,11 +97,11 @@ static void servo_path(hls::stream<short> &ch2_in,
   }
 }
 
-static void hold_4(hls::stream<short> &in,
+static void hold_128(hls::stream<short> &in,
                    hls::stream<short> &out) 
 {
   short val = in.read();
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 128; i++) {
     #pragma HLS PIPELINE II=1
     out.write(val);
   }
@@ -99,7 +111,7 @@ static void pack_dac(hls::stream<short> &dac1_in,
                      hls::stream<short> &dac2_in,
                      hls::stream<axis_t> &dac_out)
 {
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 128; i++) {
     #pragma HLS PIPELINE II=1
     axis_t val_dac;
     short dac_1_out = dac1_in.read();
@@ -132,9 +144,10 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
   #pragma HLS INTERFACE ap_none port = gpio_in
   #pragma HLS INTERFACE s_axilite port = return
 
-  hls::stream<short> ch1, ch1_decim, ch2, dac1_raw, dac1, dac2;
+  hls::stream<short> ch1, ch1_decim, ch1_decim_32, ch2, dac1_raw, dac1, dac2;
   #pragma HLS STREAM variable = ch1 depth = 8
   #pragma HLS STREAM variable = ch1_decim depth = 4
+  #pragma HLS STREAM variable = ch1_decim_32 depth = 4
   #pragma HLS STREAM variable = ch2 depth = 8
   #pragma HLS STREAM variable = dac1_raw depth = 4
   #pragma HLS STREAM variable = dac1 depth = 8
@@ -142,8 +155,9 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
   
   read_adc(adc_in, ch1, ch2);
   decimate_by_4(ch1, ch1_decim);
-  hinf_path(ch1_decim, dac1_raw);
-  hold_4(dac1_raw, dac1);
+  decimate_by_32(ch1_decim, ch1_decim_32);
+  hinf_path(ch1_decim_32, dac1_raw);
+  hold_128(dac1_raw, dac1);
   servo_path(ch2, dac2, gpio_in, servo_offset, servo_arm);
   pack_dac(dac1, dac2, dac_out);
 }

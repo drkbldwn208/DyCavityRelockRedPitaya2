@@ -6,15 +6,22 @@
 
 #define HINF_COEF_TOTAL_BITS (HINF_COEF_INT_BITS + HINF_COEF_FRAC_BITS)
 
-typedef ap_fixed<16, 1> sig_t; // Q1.15 signal
+// 1. Widen types and enforce Saturation (AP_SAT)
+typedef ap_fixed<16, 1, AP_TRN, AP_SAT> sig_t;     // Q1.15 signal
 typedef ap_fixed<HINF_COEF_TOTAL_BITS, HINF_COEF_INT_BITS> coeff_t; 
-typedef ap_fixed<40, 8> state_t; // Q8.32 state
-typedef ap_fixed<64, 12> acc_t; // Q12.52 accumulator
+
+// The inter-stage pipe. ±2048 headroom.
+typedef ap_fixed<32, 12, AP_TRN, AP_SAT> pipe_t;   
+
+// The master accumulator. ±16 million headroom. 
+// This Maps perfectly to the Xilinx DSP48 slice.
+typedef ap_fixed<64, 24, AP_TRN, AP_SAT> acc_t;    
 
 class HinfFilter {
   private:
-    state_t w1[HINF_N_SECTIONS];
-    state_t w2[HINF_N_SECTIONS];
+    // DF-I requires us to remember the last two inputs (x) and outputs (y) per section
+    pipe_t x_hist[HINF_N_SECTIONS][2];
+    pipe_t y_hist[HINF_N_SECTIONS][2];
 
     static coeff_t int_to_coeff(int32_t raw) {
       #pragma HLS INLINE
@@ -23,56 +30,66 @@ class HinfFilter {
       return c;
     }
 
-    static void biquad(sig_t x, sig_t &y,
-                    state_t &w1, state_t &w2,
+    // Direct Form I Biquad
+    void biquad_df1(pipe_t x_in, pipe_t &y_out, int sec,
                     coeff_t b0, coeff_t b1, coeff_t b2,
                     coeff_t a1, coeff_t a2)
     {
-    #pragma HLS INLINE
-    acc_t y_acc = acc_t(b0 * x) + (acc_t)w1;
-    sig_t y_out = sig_t(y_acc);
+      #pragma HLS INLINE
+      
+      // Compute the entire sum in one massive 64-bit register.
+      // Because 'acc_t' is so wide, internal overflow during the addition is impossible.
+      acc_t acc = (acc_t)(b0 * x_in) 
+                + (acc_t)(b1 * x_hist[sec][0]) 
+                + (acc_t)(b2 * x_hist[sec][1]) 
+                - (acc_t)(a1 * y_hist[sec][0]) 
+                - (acc_t)(a2 * y_hist[sec][1]);
 
-    acc_t w1_new = acc_t(b1 * x) - acc_t(a1 * y_out) + (acc_t)w2;
-    acc_t w2_new = acc_t(b2 * x) - acc_t(a2 * y_out);
+      // Saturate and truncate down to the inter-stage pipe width
+      y_out = pipe_t(acc);
 
-    w1 = state_t(w1_new);
-    w2 = state_t(w2_new);
-    y = y_out;
+      // Shift the history registers for the next clock cycle
+      x_hist[sec][1] = x_hist[sec][0];
+      x_hist[sec][0] = x_in;
+      
+      y_hist[sec][1] = y_hist[sec][0];
+      y_hist[sec][0] = y_out;
     }
 
   public:
     HinfFilter() {
-      #pragma HLS ARRAY_PARTITION variable = w1 complete
-      #pragma HLS ARRAY_PARTITION variable = w2 complete
-
-      #pragma HLS DEPENDENCE variable = w1 type=inter direction=RAW distance=4
-      #pragma HLS DEPENDENCE variable = w2 type=inter direction=RAW distance=4
+      // Completely partition the history arrays so they become individual flip-flops
+      #pragma HLS ARRAY_PARTITION variable=x_hist complete dim=0
+      #pragma HLS ARRAY_PARTITION variable=y_hist complete dim=0
 
       for (int i = 0; i < HINF_N_SECTIONS; i++) {
         #pragma HLS UNROLL
-        w1[i] = 0;
-        w2[i] = 0;
+        x_hist[i][0] = 0; x_hist[i][1] = 0;
+        y_hist[i][0] = 0; y_hist[i][1] = 0;
       }
     }
 
     sig_t process(sig_t u_in) {
       #pragma HLS INLINE
 
-      sig_t pipe[HINF_N_SECTIONS + 1];
-      #pragma HLS ARRAY_PARTITION variable = pipe complete
-      pipe[0] = u_in;
+      pipe_t pipe[HINF_N_SECTIONS + 1];
+      #pragma HLS ARRAY_PARTITION variable=pipe complete
+      pipe[0] = pipe_t(u_in);  
 
-      CASCADE: 
-        for (int i = 0; i < HINF_N_SECTIONS; i++) {
-          #pragma HLS UNROLL
-          coeff_t cb0 = int_to_coeff(HINF_SOS[i].b0);
-          coeff_t cb1 = int_to_coeff(HINF_SOS[i].b1);
-          coeff_t cb2 = int_to_coeff(HINF_SOS[i].b2);
-          coeff_t ca1 = int_to_coeff(HINF_SOS[i].a1);
-          coeff_t ca2 = int_to_coeff(HINF_SOS[i].a2);
+      CASCADE:
+      for (int i = 0; i < HINF_N_SECTIONS; i++) {
+        #pragma HLS UNROLL
+        coeff_t cb0 = int_to_coeff(HINF_SOS[i].b0);
+        coeff_t cb1 = int_to_coeff(HINF_SOS[i].b1);
+        coeff_t cb2 = int_to_coeff(HINF_SOS[i].b2);
+        coeff_t ca1 = int_to_coeff(HINF_SOS[i].a1);
+        coeff_t ca2 = int_to_coeff(HINF_SOS[i].a2);
 
-          biquad(pipe[i], pipe[i + 1], w1[i], w2[i], cb0, cb1, cb2, ca1, ca2);
-        }
-      return pipe[HINF_N_SECTIONS];
+        // Call the new DF-I structure
+        biquad_df1(pipe[i], pipe[i + 1], i, cb0, cb1, cb2, ca1, ca2);
+      }
+      
+      // Final output saturation down to Q1.15
+      return sig_t(pipe[HINF_N_SECTIONS]);  
     }
 };

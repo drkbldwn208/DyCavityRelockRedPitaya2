@@ -15,16 +15,30 @@ VIVADO_DIR = $(BUILD_DIR)/vivado_workspace
 MONITOR_SCRIPT = $(SCRIPT_DIR)/move_bit.sh
 MONITOR_LOG = $(BUILD_DIR)/monitor.log
 
-.PHONY: all csim hls vivado external_cores clean start_monitor stop_monitor
+# Path to Vitis HLS csim output (where CSVs land)
+CSIM_BUILD_DIR = $(SIM_DIR)/dy_cavity_relocker_2_csim/solution1/csim/build
+
+.PHONY: all csim csim_plot hls vivado external_cores clean start_monitor stop_monitor
 
 all: external_cores hls vivado
 
+# Run C simulation through Vitis HLS (required for ap_fixed / HLS types)
 csim:
-	@echo "Running C simulation..."
+	@echo "Running C simulation via Vitis HLS..."
 	@mkdir -p $(SIM_DIR)
-	g++ $(SOURCE_FILES) $(TESTBENCH) -o $(SIM_DIR)/sim_extecutable
-	cd $(SIM_DIR) && ./sim_extecutable
-	@echo "C simulation completed."
+	cd $(SIM_DIR) && \
+	source /home/levlabcukomen/tools/Vitis_HLS/2024.1/settings64.sh && \
+	source /home/levlabcukomen/tools/Vivado/2024.1/settings64.sh && \
+	vitis_hls -f ../../$(SCRIPT_DIR)/hls_csim.tcl
+	@echo ""
+	@echo "=== C simulation completed ==="
+	@echo "CSV outputs in: $(CSIM_BUILD_DIR)/"
+	@ls -la $(CSIM_BUILD_DIR)/*.csv 2>/dev/null || echo "(no CSV files found — check sim log)"
+
+# Run csim then plot results
+csim_plot: csim
+	@echo "Plotting results..."
+	python3 $(SCRIPT_DIR)/plot_response.py $(CSIM_BUILD_DIR)
 
 external_cores:
 	@echo "Cloning external cores repository..."

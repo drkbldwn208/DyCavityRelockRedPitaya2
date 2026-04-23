@@ -22,6 +22,7 @@ import control as ct
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import scipy.signal as sig
 
 # ---------------------------------------------------------------------------
 # NORMALIZATION
@@ -52,7 +53,7 @@ PLANT_HAS_INTEGRATOR = False
 # W1_DC=50 demands |S| < 1/50 below 5 kHz.
 # Combined with existing ~-35 dB that gives ~-69 dB total — factor ~30x better.
 # Raise W1_DC until gamma > 2, then you're near the plant's limit.
-W1_DC         = 50.0   # <-- primary knob. Try 10, 30, 50, 100.
+W1_DC         = 10.0   # <-- primary knob. Try 10, 30, 50, 100.
 W1_CORNER     = 8e3    # Hz — edge of suppression band
 W1_MID        = 3.0    # gentle anchor: keeps crossover near 25-30 kHz
                        # without conflicting with W3. Keep at 2-5.
@@ -62,7 +63,7 @@ W1_HF         = 0.5
 # W3: HF guardrail ONLY. Tiny DC to avoid S+T=1 conflict with W1.
 W3_DC     = 0.05
 W3_CORNER = 20e3
-W3_HF     = 0.3
+W3_HF     = 20.0
 
 # W2: suppress K above actuator bandwidth
 W2_DC     = 1e-3
@@ -97,7 +98,7 @@ K_PLANT = 3533.3 # rad/s
 w_leak = 2 * np.pi * 1.0
 norm_K = K_PLANT / w_norm
 norm_w_leak = w_leak / w_norm
-G_core = ct.tf([norm_K], [1.0, norm_w_leak])
+G_core = ct.tf([norm_K], [1.0])
 
 # 1b. Helper Function for Complex Pole/Zero Resonance Pairs
 def make_complex_pz_pair(p_real_hz, p_imag_hz, z_real_hz, z_imag_hz):
@@ -360,43 +361,82 @@ plt.show()
 
 # ---------------------------------------------------------------------------
 # 7. DISCRETIZE  (31.25 MHz = 125 MHz / 4)
+# ---------------------------------------------------------------------------# ---------------------------------------------------------------------------
+# 7. DISCRETIZE
 # ---------------------------------------------------------------------------
-fs_ctrl = 125e6 / 4
+fs_ctrl = 125e6 / 128
 Ts_n    = (1.0 / fs_ctrl) * w_norm
 K_d     = ct.c2d(K, Ts_n, method="tustin")
 
-try:
-    K_bal = ct.balred(K_d, orders=K_d.nstates)
-except Exception as e:
-    print(f"  balred failed ({e}), using unbalanced realization")
-    K_bal = ct.ss(K_d)
+# Extract zpk from the DISCRETE state-space (no bilinear artifacts)
+A_d = np.array(K_d.A)
+B_d = np.array(K_d.B)
+C_d = np.array(K_d.C)
+D_d = np.array(K_d.D)
 
-A, B, C, D = K_bal.A, K_bal.B, K_bal.C, K_bal.D
-max_r = np.max(np.abs(np.linalg.eigvals(A)))
-print(f"\n  Discrete poles: max|z|={max_r:.8f}  "
-      f"({'OK' if max_r < 1.0 else 'UNSTABLE'})")
+# Poles = eigenvalues of A (numerically stable for state-space)
+p_d = np.linalg.eigvals(A_d)
 
-np.set_printoptions(precision=9, suppress=False, linewidth=120)
-print(f"\n=== Discrete K @ {fs_ctrl/1e6:.4f} MHz ===")
-print("A =\n", A)
-print("B =\n", B)
-print("C =\n", C)
-print("D =\n", D)
+# Zeros from state-space: eigenvalues of [A B; C D] pencil
+import scipy.linalg
+n = A_d.shape[0]
+top = np.hstack([A_d, B_d])
+bot = np.hstack([C_d, D_d])
+M = np.vstack([top, bot])
+L = np.eye(n + 1)
+L[:n, :n] = np.eye(n)
+L[n, n] = 0
+# Use scipy's transmission zeros
+z_d = np.array(ct.zeros(K_d)).flatten()
 
-np.savez("K_coeffs.npz", A=A, B=B, C=C, D=D, fs=np.array(fs_ctrl))
-print("\nSaved K_coeffs.npz")
+# Gain: evaluate K_d at z=1 (DC) and solve for k
+# k * prod(1 - z_i) / prod(1 - p_i) = K_d(DC)
+K_dc = (D_d + C_d @ np.linalg.solve(np.eye(n) - A_d, B_d)).item().real
+k_d = K_dc * np.prod(1.0 - p_d) / np.prod(1.0 - z_d)
+k_d = np.real(k_d)
 
-import scipy.signal as sig
+print(f"\n  Discrete: {len(p_d)} poles, {len(z_d)} zeros")
+print(f"  Max |pole| = {max(abs(p_d)):.6f}")
+print(f"  DC gain = {K_dc:.4f} ({20*np.log10(abs(K_dc)):.1f} dB)")
+print(f"  Any |pole| >= 1: {any(abs(p) >= 1.0 for p in p_d)}")
 
-# Extract continuous ZPK directly from the optimal controller K
-num, den = ct.tfdata(ct.tf(K))
-z_c, p_c, k_c = sig.tf2zpk(num[0][0], den[0][0])
+# Remove any near-cancelling pole-zero pairs (numerical artifacts from balred)
+z_list = list(z_d)
+p_list = list(p_d)
+cancelled = 0
+for p in list(p_list):
+    for z in list(z_list):
+        if abs(p - z) / (abs(p) + 1e-30) < 1e-6:
+            p_list.remove(p)
+            z_list.remove(z)
+            cancelled += 1
+            break
+if cancelled:
+    print(f"  Cancelled {cancelled} near-exact pole-zero pair(s)")
+    # Recompute gain
+    k_d = K_dc * np.prod(1.0 - np.array(p_list)) / np.prod(1.0 - np.array(z_list))
+    k_d = np.real(k_d)
 
-fs_norm = fs_ctrl / w_norm
+z_d = np.array(z_list)
+p_d = np.array(p_list)
 
-# Discretize via Bilinear Transform (mathematically identical to c2d tustin)
-z_d, p_d, k_d = sig.bilinear_zpk(z_c, p_c, k_c, fs_norm)
-
-# Save the exact discrete ZPK to a dedicated file for the HLS analyzer
 np.savez("K_zpk.npz", z=z_d, p=p_d, k=k_d, fs=np.array(fs_ctrl))
-print("\nSaved K_zpk.npz (Exact Discrete Poles and Zeros)")
+print(f"  Saved K_zpk.npz ({len(p_d)} poles, {len(z_d)} zeros)")
+
+# --- EXPORT PLANT FOR C++ TESTBENCH ---
+print("\n=== C++ Plant Simulator Coefficients ===")
+# Discretize the physical plant (G_aug) at the 976 kHz filter rate
+G_aug_d = ct.c2d(G_aug, Ts_n, method="tustin")
+
+# Convert to ZPK, then to SOS
+z_p, p_p, k_p = ct.zeros(G_aug_d), ct.poles(G_aug_d), float(G_aug_d.dcgain().real)
+# Correct the gain for SOS format
+k_adj_p = k_p * np.prod(1.0 - p_p) / np.prod(1.0 - z_p)
+
+sos_p = sig.zpk2sos(z_p, p_p, np.real(k_adj_p), pairing='nearest')
+
+print(f"const int PLANT_N_SEC = {sos_p.shape[0]};")
+print("const double PLANT_SOS[][5] = {")
+for s in sos_p:
+    print(f"    {{{s[0]:.8e}, {s[1]:.8e}, {s[2]:.8e}, {s[4]:.8e}, {s[5]:.8e}}},")
+print("};")
