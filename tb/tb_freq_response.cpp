@@ -145,7 +145,7 @@ int main()
         FILE *f = fopen("step_response.csv", "w");
         fprintf(f, "frame,input,output_ch1,output_ch2\n");
 
-        const int n_frames = 200;
+        const int n_frames = 2000;
         short last_ch1 = 0;
         for (int call = 0; call < n_frames; call++) {
             for (int k = 0; k < FRAME_SIZE; k++)
@@ -171,7 +171,7 @@ int main()
         FILE *f = fopen("impulse_response.csv", "w");
         fprintf(f, "frame,input,output_ch1\n");
 
-        const int n_frames = 300;
+        const int n_frames = 3000;
         int nonzero = 0; short maxabs = 0;
         for (int call = 0; call < n_frames; call++) {
             for (int k = 0; k < FRAME_SIZE; k++) {

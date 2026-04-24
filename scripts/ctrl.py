@@ -11,13 +11,7 @@ via the --plant-npz flag when you have real measurement data.
 
 Outputs:
   K_zpk.npz            — discrete controller ZPK (consumed by coeffs_analyze.py)
-  hinf_comparison.png  — open-loop Bode: plant only vs. plant × K
-
-Weight heuristics (mixed-sensitivity: |W1·S| ≤ 1, |W2·K·S| ≤ 1, |W3·T| ≤ 1):
-  W1 (performance, low-freq): DC gain ~10–100; corner ~ f_xover / 2;  HF < 1
-  W3 (robustness, high-freq): DC ~ 0.01–0.1;    corner ~ f_xover × 1.5; HF > 5
-  W2 (effort): loose; DC tiny, rolls up above actuator BW
-  γ < 1.5 is healthy; > 3 means the weights over-ask the plant.
+  hinf_comparison.png  — 3-panel Bode: Loop Gain, Phase, and Sensitivity
 """
 
 import argparse
@@ -26,7 +20,6 @@ import numpy as np
 import scipy.signal as sig
 import control as ct
 import matplotlib.pyplot as plt
-
 
 # ---------- CLI ----------
 def parse_args():
@@ -48,6 +41,11 @@ def parse_args():
     return p.parse_args()
 
 
+# def makeweight(dcgain, wc_norm, hfgain):
+#     """ Corrected H-infinity bounding weight formula """
+#     # W(s) = (HF * s + DC * wc) / (s + wc)
+#     return ct.tf([hfgain, wc_norm * dcgain], [1.0, wc_norm])
+
 def makeweight(dcgain, wc_norm, hfgain):
     if dcgain > hfgain:
         M, A = dcgain, hfgain / dcgain
@@ -56,12 +54,14 @@ def makeweight(dcgain, wc_norm, hfgain):
     return ct.tf([1.0, wc_norm * A], [1.0/M, wc_norm])
 
 
+
+
 def build_plant(args, w_norm):
     if args.plant_npz:
         d = np.load(args.plant_npz)
         zc = d["z"] / w_norm
         pc = d["p"] / w_norm
-        kc = float(d["k"]) * w_norm**(len(d["p"]) - len(d["z"]))
+        kc = float(d["k"]) * w_norm**(len(d["z"]) - len(d["p"]))
         num = np.poly(zc) * kc
         den = np.poly(pc)
         return ct.tf(num, den)
@@ -106,37 +106,68 @@ def main():
         print("  γ > 3: over-asked — lower --w1-dc or widen corners")
 
     L_ctrl = G_aug * K
+    S_ctrl = ct.feedback(1, L_ctrl) # Sensitivity S = 1 / (1 + L)
+    
     print()
     fc_c, pm_c = margins(L_ctrl, "plant × K", w_norm)
     fc_o, pm_o = margins(G_aug,   "plant only", w_norm)
+    
     peak_S = float(np.max(np.abs(np.asarray(
-        ct.frequency_response(ct.feedback(1, L_ctrl),
-                              np.logspace(-3, 3, 2000)).frdata).squeeze())))
+        ct.frequency_response(S_ctrl, np.logspace(-3, 3, 2000)).frdata).squeeze())))
     print(f"  peak |S| = {peak_S:.2f} ({20*np.log10(peak_S):.1f} dB)")
 
-    # --- Bode plot: plant only vs. plant × K --------------------------------
+    # --- 3-Panel Bode Plot: Magnitude, Phase, and Sensitivity -----------------
     w_dense = np.logspace(-3, 3, 4000)
     f_plot  = w_dense * w_norm / (2*np.pi)
     mag = lambda s: np.abs(np.asarray(ct.frequency_response(s, w_dense).frdata).squeeze())
     phd = lambda s: np.degrees(np.unwrap(np.angle(np.asarray(
         ct.frequency_response(s, w_dense).frdata).squeeze())))
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
-    title = f"Open-loop Bode  |  γ={gamma:.2f}"
+    # Make the figure taller to comfortably fit 3 panels
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 11), sharex=True)
+    title = f"H-Infinity Synthesis  |  γ={gamma:.2f}"
     if pm_c: title += f"  |  with K: PM={pm_c:.0f}°@{fc_c/1e3:.1f} kHz"
-    fig.suptitle(title)
-    ax1.loglog(f_plot, mag(L_ctrl), color="C0", lw=2.0, label="|G·K| with controller")
-    ax1.loglog(f_plot, mag(G_aug),  color="C3", lw=1.5, ls="--", label="|G| plant only")
-    ax1.axhline(1.0, color="gray", ls=":", lw=0.8)
-    ax1.axvline(args.xover, color="purple", ls=":", lw=0.8, label=f"{args.xover/1e3:.0f} kHz target")
-    ax1.set_ylabel("Magnitude"); ax1.grid(True, which="both", alpha=0.3); ax1.legend(fontsize=9)
+    fig.suptitle(title, fontsize=14)
+    
+    # --- 1. Magnitude Plot ---
+    ax1.loglog(f_plot, mag(L_ctrl), color="C0", lw=2.5, label="|L| (Loop Gain: G·K)")
+    ax1.loglog(f_plot, mag(G_aug),  color="C3", lw=1.5, ls="--", label="|G| (Plant)")
+    # Made controller orange, thicker, and dashed for high visibility
+    ax1.loglog(f_plot, mag(K),      color="C1", lw=2.5, ls="--", label="|K| (Controller)") 
+    ax1.axhline(1.0, color="gray", ls=":", lw=1.0)
+    ax1.axvline(args.xover, color="purple", ls=":", lw=1.0, label=f"{args.xover/1e3:.0f} kHz target")
+    ax1.set_ylabel("Magnitude", fontsize=11)
+    ax1.grid(True, which="both", alpha=0.3)
+    ax1.legend(fontsize=10, loc="lower left")
 
-    ax2.semilogx(f_plot, phd(L_ctrl), color="C0", lw=2.0, label="∠(G·K)")
-    ax2.semilogx(f_plot, phd(G_aug),  color="C3", lw=1.5, ls="--", label="∠G")
-    ax2.axhline(-180, color="gray", ls=":", lw=0.8)
-    ax2.set_ylim([-360, 90])
-    ax2.set_xlabel("Frequency (Hz)"); ax2.set_ylabel("Phase (deg)")
-    ax2.grid(True, which="both", alpha=0.3); ax2.legend(fontsize=9)
+    # --- 2. Phase Plot ---
+    ax2.semilogx(f_plot, phd(L_ctrl), color="C0", lw=2.5, label="∠L (Loop Gain)")
+    ax2.semilogx(f_plot, phd(G_aug),  color="C3", lw=1.5, ls="--", label="∠G (Plant)")
+    ax2.semilogx(f_plot, phd(K),      color="C1", lw=2.5, ls="--", label="∠K (Controller)")
+    ax2.axhline(-180, color="gray", ls=":", lw=1.0)
+    ax2.axvline(args.xover, color="purple", ls=":", lw=1.0)
+    
+    # Auto-scale phase y-axis to handle large integrator wrap-around gracefully
+    current_ymin, current_ymax = ax2.get_ylim()
+    ax2.set_ylim([min(-360, current_ymin), max(90, current_ymax)])
+    
+    ax2.set_ylabel("Phase (deg)", fontsize=11)
+    ax2.grid(True, which="both", alpha=0.3)
+    ax2.legend(fontsize=10, loc="lower left")
+
+    # --- 3. Sensitivity Plot ---
+    mag_S_db = 20 * np.log10(mag(S_ctrl) + 1e-12) # Convert Sensitivity to dB
+    ax3.semilogx(f_plot, mag_S_db, color="C4", lw=2.5, label="|S| (Sensitivity)")
+    
+    # Prominent safety limit line
+    ax3.axhline(6.0, color="red", ls="-.", lw=1.5, label="+6.0 dB Safety Limit")
+    ax3.axvline(args.xover, color="purple", ls=":", lw=1.0)
+    
+    ax3.set_xlabel("Frequency (Hz)", fontsize=11)
+    ax3.set_ylabel("Magnitude (dB)", fontsize=11)
+    ax3.grid(True, which="both", alpha=0.3)
+    ax3.legend(fontsize=10, loc="upper left")
+
     plt.tight_layout()
     plt.savefig("hinf_comparison.png", dpi=120)
     print("Saved hinf_comparison.png")
