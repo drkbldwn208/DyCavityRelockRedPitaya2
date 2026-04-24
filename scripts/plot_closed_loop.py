@@ -1,84 +1,65 @@
 #!/usr/bin/env python3
 """
 Plot the closed-loop acquisition from the HLS C-simulation.
+Overlays the float-controller and fixed-point-controller runs if both exist.
 
 Usage: python3 scripts/plot_closed_loop.py [sim_output_dir]
-  Default sim_output_dir: build/sim_workspace/dy_cavity_relocker_2_csim/solution1/csim/build
 """
-import sys
 import os
+import sys
 import csv
+import matplotlib.pyplot as plt
 
-try:
-    import matplotlib
-    # matplotlib.use('Agg') # Uncomment if you are running entirely headless and plt.show() crashes
-    import matplotlib.pyplot as plt
-    HAS_MPL = True
-except ImportError:
-    HAS_MPL = False
-    print("Error: matplotlib is required to generate the plots.")
-    sys.exit(1)
+DEFAULT_SIM_DIR = "build/sim_workspace/dy_cavity_relocker_2_csim/solution1/csim/build"
+
+
+def read_run(path):
+    if not os.path.exists(path):
+        return None
+    samples, errors, efforts = [], [], []
+    with open(path) as f:
+        for r in csv.DictReader(f):
+            samples.append(int(r["sample"]))
+            errors.append(float(r["error"]))
+            efforts.append(float(r["effort"]))
+    return samples, errors, efforts
+
 
 def main():
-    if len(sys.argv) > 1:
-        sim_dir = sys.argv[1]
-    else:
-        sim_dir = "build/sim_workspace/dy_cavity_relocker_2_csim/solution1/csim/build"
+    sim_dir = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_SIM_DIR
 
-    csv_path = os.path.join(sim_dir, "closed_loop.csv")
-
-    if not os.path.exists(csv_path):
-        print(f"ERROR: Could not find {csv_path}")
-        print("Make sure you ran the C-simulation with Test 5 enabled.")
+    runs = {
+        "float":      read_run(os.path.join(sim_dir, "closed_loop_float.csv")),
+        "fixed-point": read_run(os.path.join(sim_dir, "closed_loop_fixed.csv")),
+    }
+    runs = {k: v for k, v in runs.items() if v is not None}
+    if not runs:
+        print(f"No closed_loop_{{float,fixed}}.csv found in {sim_dir}", file=sys.stderr)
         sys.exit(1)
 
-    samples = []
-    errors = []
-    efforts = []
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    fig.suptitle("H∞ controller: closed-loop acquisition")
 
-    print(f"Reading data from {csv_path}...")
-    with open(csv_path, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            samples.append(int(row['sample']))
-            errors.append(float(row['adc_error']))
-            efforts.append(int(row['dac_effort']))
+    colors = {"float": "#1f77b4", "fixed-point": "#d62728"}
+    for label, (s, e, u) in runs.items():
+        a1.plot(s, e, color=colors[label], lw=1.4, label=label, alpha=0.85)
+        a2.plot(s, u, color=colors[label], lw=1.4, label=label, alpha=0.85)
 
-    if not samples:
-        print("ERROR: CSV file is empty.")
-        sys.exit(1)
+    a1.axhline(0, color="black", ls=":", alpha=0.5)
+    a1.set_ylabel("Residual error")
+    a1.set_title("Error  (target: 0)")
+    a1.grid(True, alpha=0.3); a1.legend()
 
-    print("Generating plot...")
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-    fig.suptitle('H∞ Controller: Closed-Loop Lock Acquisition', fontsize=14)
-
-    # Top Plot: Error Signal
-    ax1.plot(samples, errors, color='#d62728', linewidth=2.0, label='Residual Error (ADC)')
-    ax1.axhline(0, color='black', linestyle=':', alpha=0.6)
-    ax1.set_ylabel('Cavity Error (ADU)')
-    ax1.set_title('Error Signal (Target: 0.0)')
-    ax1.grid(True, which='both', alpha=0.3)
-    ax1.legend(loc='upper right')
-
-    # Bottom Plot: Control Effort
-    ax2.plot(samples, efforts, color='#1f77b4', linewidth=2.0, label='Drive Signal (DAC)')
-    ax2.set_xlabel('Time (Samples / µs)')
-    ax2.set_ylabel('Control Effort (ADU)')
-    ax2.set_title('Piezo Actuator Drive')
-    ax2.grid(True, which='both', alpha=0.3)
-    ax2.legend(loc='lower right')
+    a2.set_xlabel("Filter sample  (~1 µs each)")
+    a2.set_ylabel("Control effort")
+    a2.set_title("DAC drive")
+    a2.grid(True, alpha=0.3); a2.legend()
 
     plt.tight_layout()
-    
-    out_path = os.path.join(sim_dir, "closed_loop_acquisition.png")
-    plt.savefig(out_path, dpi=150)
-    print(f"\nSuccess! Plot saved to: {out_path}")
+    out = os.path.join(sim_dir, "closed_loop.png")
+    plt.savefig(out, dpi=150)
+    print(f"Saved {out}")
 
-    # Display the plot if running in an interactive GUI environment
-    try:
-        plt.show()
-    except Exception as e:
-        print("Note: Could not display interactive window (likely headless environment).")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
