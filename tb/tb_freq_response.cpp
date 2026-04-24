@@ -6,22 +6,15 @@
 #include "../src/hinf_filter.hpp"
 
 /*
- * Testbench for dy_cavity_relocker_2
+ * Testbench for dy_cavity_relocker_2.
  *
- * ADC sample rate:     125      MHz
- * Total decimation:    128x     (4x CIC + 32x CIC)
- * Filter sample rate:  976.5625 kHz
- * Nyquist:             488.28   kHz
+ *   ADC 125 MHz  →  128x decim  →  filter at 976.5625 kHz
  *
- * Each call processes FRAME_SIZE=128 ADC samples and produces one filter
- * output (held across 128 DAC samples).
- *
- * Tests:
- *   1) DC step       — step_response.csv
- *   2) Impulse       — impulse_response.csv
- *   3) Frequency sweep (open-loop controller Bode) — freq_response.csv
- *   4) Closed-loop (float controller + float plant) — closed_loop_float.csv
- *   5) Closed-loop (fixed-point controller + float plant) — closed_loop_fixed.csv
+ *   1  DC step               step_response.csv
+ *   2  Impulse               impulse_response.csv
+ *   3  Float closed loop     closed_loop_float.csv
+ *   4  Fixed-point closed    closed_loop_fixed.csv
+ *   5  Frequency sweep       freq_response.csv
  */
 
 static const int    FRAME_SIZE = 128;
@@ -114,10 +107,7 @@ static MeasResult measure_freq(double freq, bool verbose)
     return {gain_db, phase_deg, (double)rms_out, rms_out};
 }
 
-// ---------------------------------------------------------------------------
-// Plant simulator: discretized 50 kHz low-pass (matches ctrl.py)
-// Paste SOS from ctrl.py "=== C++ Plant Simulator SOS ===" section.
-// ---------------------------------------------------------------------------
+// Plant SOS — paste from ctrl.py "Plant SOS for tb_freq_response.cpp"
 const int PLANT_N_SEC = 1;
 const double PLANT_SOS[][5] = {
     {7.01024743e-02, 1.40204949e-01, 7.01024743e-02, -7.11018449e-01, -8.57165403e-03},
@@ -141,9 +131,6 @@ public:
     }
 };
 
-// ===========================================================================
-// main
-// ===========================================================================
 int main()
 {
     printf("=== dy_cavity_relocker_2 testbench ===\n");
@@ -151,9 +138,6 @@ int main()
     printf("  Filter rate: %.4f kHz  (128x decim)\n", FS_FILT / 1e3);
     printf("  Nyquist:     %.2f kHz\n\n", FS_FILT / 2e3);
 
-    // -----------------------------------------------------------------------
-    // Test 1: DC step
-    // -----------------------------------------------------------------------
     printf("--- Test 1: DC step (input = %d) ---\n", INPUT_AMPL);
     {
         hls::stream<axis_t> adc_in("dc_in");
@@ -180,9 +164,6 @@ int main()
         printf("  Final ch1 = %d\n\n", last_ch1);
     }
 
-    // -----------------------------------------------------------------------
-    // Test 2: Impulse
-    // -----------------------------------------------------------------------
     printf("--- Test 2: Impulse (amp=%d at n=0) ---\n", INPUT_AMPL);
     {
         hls::stream<axis_t> adc_in("imp_in");
@@ -215,9 +196,6 @@ int main()
         printf("\n");
     }
 
-    // -----------------------------------------------------------------------
-    // Test 3: Closed loop (floating-point controller + float plant)
-    // -----------------------------------------------------------------------
     printf("--- Test 3: Floating-point closed loop ---\n");
     {
         PlantSimulator plant;
@@ -249,13 +227,6 @@ int main()
         printf("  Final: error=%.3f  y=%.3f\n\n", disturbance - y, y);
     }
 
-    // -----------------------------------------------------------------------
-    // Test 4: Closed loop (fixed-point HinfFilter + float plant)
-    //
-    // Controller input/output live in Q1.15 (±1.0), so we pass 'e' straight
-    // into the fixed-point controller in the same units as the plant (the
-    // testbench disturbance is small, so saturation is not an issue).
-    // -----------------------------------------------------------------------
     printf("--- Test 4: Fixed-point closed loop ---\n");
     {
         HinfFilter  controller;
@@ -280,9 +251,6 @@ int main()
         printf("  Final: error=%.3f  y=%.3f\n\n", disturbance - y, y);
     }
 
-    // -----------------------------------------------------------------------
-    // Test 5: Frequency sweep (open-loop controller Bode)
-    // -----------------------------------------------------------------------
     printf("--- Test 5: Frequency sweep (%d pts, %.0f Hz - %.0f kHz) ---\n",
            N_FREQS, F_START, F_STOP / 1e3);
     FILE *csv = fopen("freq_response.csv", "w");

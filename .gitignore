@@ -5,3 +5,4 @@ tmp/
 *.jou
 *.str
 *.zip
+__pycache__/

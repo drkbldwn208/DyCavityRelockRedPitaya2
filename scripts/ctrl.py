@@ -1,184 +1,83 @@
 """
-H-infinity controller synthesis for a simple first-order plant.
+H-infinity controller synthesis.
 
-Plant (continuous):
-    G(s) = K_DC / (1 + s / wp)        wp = 2π · PLANT_CORNER_HZ
+Default plant is a single-pole 50 kHz low-pass with a 500 ns electronics lag.
+Target loop-gain crossover is 20 kHz. Swap in a fitted plant from bode_fit.py
+via the --plant-npz flag when you have real measurement data.
 
-This deliberately-simple 50 kHz low-pass is the verification plant. Once the
-pipeline is happy (synth → discretize → quantize → HLS csim), swap in a
-fitted plant (see bode_fit.py) to synthesize the real controller.
+  python3 scripts/ctrl.py                      # defaults
+  python3 scripts/ctrl.py --xover 30           # retarget crossover
+  python3 scripts/ctrl.py --plant-npz fit.npz  # use measured plant
 
-Target bandwidth (loop-gain crossover): 20 kHz.
+Outputs:
+  K_zpk.npz            — discrete controller ZPK (consumed by coeffs_analyze.py)
+  hinf_comparison.png  — open-loop Bode: plant only vs. plant × K
 
-Pipeline outputs:
-    K_zpk.npz           — discrete controller ZPK  (consumed by coeffs_analyze.py)
-    hinf_comparison.png — open-loop Bode, plant alone vs. plant × K
-
-===========================================================================
-How to choose W1, W2, W3 for stable performance
-===========================================================================
-
-Mixed-sensitivity design bounds three closed-loop transfers:
-
-    |W1 · S|  ≤ 1      S = 1/(1+L)         (tracking / disturbance rejection)
-    |W2 · K·S| ≤ 1     K·S                  (control effort)
-    |W3 · T|  ≤ 1      T = L/(1+L)         (noise rejection / robustness)
-
-S and T satisfy S + T = 1, so W1 and W3 CANNOT both be tight at the same
-frequency. The weights trade loop shape across frequency:
-
-  W1 (performance, low frequencies)
-      DC gain:   large (e.g. 10–100) → forces |S| ≤ 1/W1_DC below W1_CORNER
-      Corner:    the "bandwidth of good rejection" — put it a factor ~2
-                 BELOW the desired crossover. For a 20 kHz bandwidth, use
-                 W1_CORNER ≈ 8–10 kHz.
-      HF gain:   small (< 1) so W1 does NOT fight W3 at high freq
-
-  W3 (robustness, high frequencies)
-      DC gain:   small (e.g. 0.01–0.1) — does nothing at low freq
-      Corner:    put it a factor ~1.5 ABOVE the desired crossover so |T|
-                 must roll off there. For 20 kHz, use W3_CORNER ≈ 30 kHz.
-      HF gain:   large (> 5) → forces |T| to decay at HF
-
-  W2 (effort)
-      Usually very loose for a simple plant. Set |W2| small at low freq
-      (allowing high K), and rising above actuator bandwidth so the
-      controller can't command impossible things. |K| > 10 is often a
-      warning the actuator model is missing.
-
-Diagnostics:
-  γ (gamma)     = attained H∞ norm. < 1.5 is near-optimal; > 3 means the
-                  weights ask for something the plant cannot deliver
-                  (lower W1_DC, move corners closer, or accept a lower BW).
-  crossover     = where |L| = 1. Should land near W1_CORNER · √(W1_DC).
-  phase margin  = should be > 30° (60° is comfortable).
-  peak |S|      = < 2 (6 dB) means good robustness to modelling error.
-
-Rule of thumb for picking crossover frequency:
-  At the desired crossover, |G| · |K| must equal 1. A single-pole plant
-  with corner f_p and DC gain K_DC has |G(f_c)| ≈ K_DC · f_p / f_c if
-  f_c > f_p, or ≈ K_DC · (1 - (f_c/f_p)^2)^(1/2) if f_c < f_p. If the
-  loop needs > ~20 dB gain at DC (W1_DC ≈ 10) and the plant delivers
-  0 dB, the controller must supply the boost — so its |K(DC)| ≈ W1_DC.
-
-This file's default weights produce a ~20 kHz crossover with γ ≈ 1–2 on
-the 50 kHz plant; adjust the knobs below to retune.
+Weight heuristics (mixed-sensitivity: |W1·S| ≤ 1, |W2·K·S| ≤ 1, |W3·T| ≤ 1):
+  W1 (performance, low-freq): DC gain ~10–100; corner ~ f_xover / 2;  HF < 1
+  W3 (robustness, high-freq): DC ~ 0.01–0.1;    corner ~ f_xover × 1.5; HF > 5
+  W2 (effort): loose; DC tiny, rolls up above actuator BW
+  γ < 1.5 is healthy; > 3 means the weights over-ask the plant.
 """
 
+import argparse
 import time
 import numpy as np
 import scipy.signal as sig
 import control as ct
 import matplotlib.pyplot as plt
 
-# ---------------------------------------------------------------------------
-# Normalization
-# ---------------------------------------------------------------------------
-F_XOVER_HZ = 20e3
-W_NORM     = 2 * np.pi * F_XOVER_HZ
 
-def wn(f_hz):
-    return 2 * np.pi * f_hz / W_NORM
+# ---------- CLI ----------
+def parse_args():
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p.add_argument("--xover",        type=float, default=20e3, help="target crossover, Hz")
+    p.add_argument("--plant-corner", type=float, default=50e3, help="plant LPF corner, Hz")
+    p.add_argument("--plant-dc",     type=float, default=1.0,  help="plant DC gain")
+    p.add_argument("--tau-delay",    type=float, default=0.5e-6, help="first-order delay, s")
+    p.add_argument("--plant-npz",    type=str,   default=None, help="override plant from bode_fit ZPK npz")
+    p.add_argument("--w1-dc",        type=float, default=30.0)
+    p.add_argument("--w1-corner",    type=float, default=15e3)
+    p.add_argument("--w2-dc",        type=float, default=1e-3)
+    p.add_argument("--w2-corner",    type=float, default=80e3)
+    p.add_argument("--w3-dc",        type=float, default=0.05)
+    p.add_argument("--w3-corner",    type=float, default=30e3)
+    p.add_argument("--fs",           type=float, default=125e6/128, help="controller sample rate, Hz")
+    p.add_argument("--out",          type=str,   default="K_zpk.npz")
+    p.add_argument("--no-show",      action="store_true")
+    return p.parse_args()
+
 
 def makeweight(dcgain, wc_norm, hfgain):
-    """First-order weight with specified DC gain, corner, and HF gain.
-    Shape:  W(s) = (s/M + wc) / (s + wc·A)   where M,A depend on dcgain/hfgain.
-    """
     if dcgain > hfgain:
         M, A = dcgain, hfgain / dcgain
-        return ct.tf([1.0 / M, wc_norm], [1.0, wc_norm * A])
+        return ct.tf([1.0/M, wc_norm], [1.0, wc_norm * A])
     M, A = hfgain, dcgain / hfgain
-    return ct.tf([1.0, wc_norm * A], [1.0 / M, wc_norm])
+    return ct.tf([1.0, wc_norm * A], [1.0/M, wc_norm])
 
-# ===========================================================================
-# Tuning knobs
-# ===========================================================================
-PLANT_CORNER_HZ = 50e3            # single-pole LPF corner
-PLANT_DC_GAIN   = 1.0
-TAU_DELAY_S     = 0.5e-6          # first-order electronics lag
 
-# W1 — performance (low freq, |S| small)
-W1_DC         = 30.0              # |S| < 1/30 = -30 dB at DC
-W1_CORNER     = 15e3              # Hz — pushes xover toward 20 kHz
-W1_HF         = 0.5               # keep <1 to avoid fighting W3
+def build_plant(args, w_norm):
+    if args.plant_npz:
+        d = np.load(args.plant_npz)
+        zc = d["z"] / w_norm
+        pc = d["p"] / w_norm
+        kc = float(d["k"]) * w_norm**(len(d["p"]) - len(d["z"]))
+        num = np.poly(zc) * kc
+        den = np.poly(pc)
+        return ct.tf(num, den)
+    wp_n = 2*np.pi*args.plant_corner / w_norm
+    G    = ct.tf([args.plant_dc * wp_n], [1.0, wp_n])
+    if args.tau_delay > 0:
+        G *= ct.tf([1.0], [args.tau_delay * w_norm, 1.0])
+    return G
 
-# W3 — robustness / noise (high freq, |T| small)
-W3_DC         = 0.05              # harmless at DC
-W3_CORNER     = 30e3              # Hz — ~1.5× F_XOVER_HZ
-W3_HF         = 20.0              # aggressive HF rolloff request
 
-# W2 — effort (small → more freedom)
-W2_DC         = 1e-3
-W2_CORNER     = 80e3
-W2_HF         = 1.0
-
-FS_FILTER     = 125e6 / 128       # 976.5625 kHz
-
-# ---------------------------------------------------------------------------
-# Plant
-# ---------------------------------------------------------------------------
-wp_n  = wn(PLANT_CORNER_HZ)
-G     = ct.tf([PLANT_DC_GAIN * wp_n], [1.0, wp_n])
-Delay = ct.tf([1.0], [TAU_DELAY_S * W_NORM, 1.0])
-G_aug = G * Delay
-
-try:
-    _, pm0, _, wpc0 = ct.margin(G_aug)
-    fc0 = float(wpc0) * W_NORM / (2 * np.pi)
-    if np.isfinite(fc0) and np.isfinite(pm0):
-        print(f"Plant+delay: xover={fc0/1e3:.1f} kHz  PM={pm0:.1f} deg")
-    else:
-        print("Plant+delay: |G| never crosses 0 dB  (no natural loop gain)")
-except Exception:
-    print("Plant+delay: no finite crossover")
-
-# ---------------------------------------------------------------------------
-# Weights
-# ---------------------------------------------------------------------------
-W1 = makeweight(W1_DC, wn(W1_CORNER), W1_HF)
-W2 = makeweight(W2_DC, wn(W2_CORNER), W2_HF)
-W3 = makeweight(W3_DC, wn(W3_CORNER), W3_HF)
-
-print(f"W1 target: |S| < 1/{W1_DC:.0f} ({-20*np.log10(W1_DC):.0f} dB) below {W1_CORNER/1e3:.0f} kHz")
-print(f"W3 target: |T| rolls off above {W3_CORNER/1e3:.0f} kHz")
-
-# ---------------------------------------------------------------------------
-# Synthesis
-# ---------------------------------------------------------------------------
-t0 = time.time()
-K, CL, info = ct.mixsyn(G_aug, w1=W1, w2=W2, w3=W3)
-gamma = float(np.atleast_1d(info[0]).flat[0])
-rcond = float(np.atleast_1d(info[1]).flat[0])
-print(f"mixsyn: {time.time()-t0:.1f}s  γ={gamma:.3f}  rcond={rcond:.2e}  "
-      f"order={ct.ss(K).nstates}")
-
-if gamma > 3.0:
-    print("  γ > 3: weights are overconstrained — reduce W1_DC or move corners apart")
-elif gamma < 0.5:
-    print("  γ < 0.5: lots of headroom — raise W1_DC for tighter suppression")
-
-# ---------------------------------------------------------------------------
-# Loop analysis
-# ---------------------------------------------------------------------------
-w_dense = np.logspace(-3, 3, 4000)
-f_plot  = w_dense * W_NORM / (2 * np.pi)
-
-def freq_mag(sys):
-    return np.abs(np.asarray(ct.frequency_response(sys, w_dense).frdata).squeeze())
-
-def freq_phase_deg(sys):
-    return np.degrees(np.unwrap(np.angle(np.asarray(
-        ct.frequency_response(sys, w_dense).frdata).squeeze())))
-
-L_open = G_aug
-L_ctrl = G_aug * K
-
-def margins(L, label):
+def margins(L, label, w_norm):
     try:
         gm, pm, _, wpc = ct.margin(L)
         if not np.isfinite(pm):
             raise ValueError
-        fc = float(wpc) * W_NORM / (2 * np.pi)
+        fc = float(wpc) * w_norm / (2*np.pi)
         print(f"  [{label:14s}] xover={fc/1e3:5.1f} kHz  PM={pm:5.1f} deg  "
               f"GM={20*np.log10(max(gm,1e-9)):5.1f} dB")
         return fc, pm
@@ -186,95 +85,99 @@ def margins(L, label):
         print(f"  [{label:14s}] no finite crossover")
         return None, None
 
-print()
-fc_c, pm_c = margins(L_ctrl, "plant × K")
-fc_o, pm_o = margins(L_open, "plant only")
-peak_S = np.max(freq_mag(ct.feedback(1, L_ctrl)))
-print(f"  peak |S| = {peak_S:.2f} ({20*np.log10(peak_S):.1f} dB)")
 
-# ---------------------------------------------------------------------------
-# Plot: open-loop Bode, plant alone vs. plant × K
-# ---------------------------------------------------------------------------
-c_ctrl, c_open = "#1f77b4", "#d62728"
-fig, axs = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+def main():
+    args    = parse_args()
+    w_norm  = 2*np.pi*args.xover
 
-ttl = f"Open-loop Bode  |  γ={gamma:.2f}"
-if pm_c: ttl += f"  |  with K: PM={pm_c:.0f}°@{fc_c/1e3:.1f} kHz"
-if pm_o: ttl += f"  |  plant only: PM={pm_o:.0f}°@{fc_o/1e3:.1f} kHz"
-fig.suptitle(ttl)
+    wn = lambda f: 2*np.pi*f / w_norm
+    G_aug = build_plant(args, w_norm)
 
-ax = axs[0]
-ax.loglog(f_plot, freq_mag(L_ctrl), color=c_ctrl, lw=2.0, label="|L| = |G·K|  (with controller)")
-ax.loglog(f_plot, freq_mag(L_open), color=c_open, lw=1.5, ls="--", label="|G|  (plant only)")
-ax.axhline(1.0, color="gray", ls=":", lw=0.8)
-ax.axvline(PLANT_CORNER_HZ, color="green", ls=":", lw=0.8, label=f"{PLANT_CORNER_HZ/1e3:.0f} kHz plant corner")
-ax.axvline(F_XOVER_HZ, color="purple", ls=":", lw=0.8, label=f"{F_XOVER_HZ/1e3:.0f} kHz xover target")
-ax.set_ylabel("Magnitude")
-ax.grid(True, which="both", alpha=0.3)
-ax.legend(fontsize=9, loc="lower left")
+    W1 = makeweight(args.w1_dc, wn(args.w1_corner), 0.5)
+    W2 = makeweight(args.w2_dc, wn(args.w2_corner), 1.0)
+    W3 = makeweight(args.w3_dc, wn(args.w3_corner), 20.0)
+    print(f"Target: xover ≈ {args.xover/1e3:.0f} kHz, |S|(DC) ≤ 1/{args.w1_dc:.0f}")
 
-ax = axs[1]
-ax.semilogx(f_plot, freq_phase_deg(L_ctrl), color=c_ctrl, lw=2.0, label="∠L  (with controller)")
-ax.semilogx(f_plot, freq_phase_deg(L_open), color=c_open, lw=1.5, ls="--", label="∠G  (plant only)")
-ax.axhline(-180, color="gray", ls=":", lw=0.8)
-if fc_c: ax.axvline(fc_c, color=c_ctrl, ls=":", lw=0.8)
-if fc_o: ax.axvline(fc_o, color=c_open, ls=":", lw=0.8)
-ax.set_ylabel("Phase (deg)")
-ax.set_xlabel("Frequency (Hz)")
-ax.set_ylim([-360, 90])
-ax.grid(True, which="both", alpha=0.3)
-ax.legend(fontsize=9, loc="lower left")
+    t0 = time.time()
+    K, _, info = ct.mixsyn(G_aug, w1=W1, w2=W2, w3=W3)
+    gamma = float(np.atleast_1d(info[0]).flat[0])
+    print(f"mixsyn: {time.time()-t0:.1f}s  γ={gamma:.3f}  order={ct.ss(K).nstates}")
+    if gamma > 3.0:
+        print("  γ > 3: over-asked — lower --w1-dc or widen corners")
 
-plt.tight_layout()
-plt.savefig("hinf_comparison.png", dpi=120)
-print("\nSaved hinf_comparison.png")
+    L_ctrl = G_aug * K
+    print()
+    fc_c, pm_c = margins(L_ctrl, "plant × K", w_norm)
+    fc_o, pm_o = margins(G_aug,   "plant only", w_norm)
+    peak_S = float(np.max(np.abs(np.asarray(
+        ct.frequency_response(ct.feedback(1, L_ctrl),
+                              np.logspace(-3, 3, 2000)).frdata).squeeze())))
+    print(f"  peak |S| = {peak_S:.2f} ({20*np.log10(peak_S):.1f} dB)")
 
-# ---------------------------------------------------------------------------
-# Discretize controller (Tustin at fs = 125 MHz / 128)
-# ---------------------------------------------------------------------------
-Ts_n = (1.0 / FS_FILTER) * W_NORM
-K_d  = ct.c2d(K, Ts_n, method="tustin")
+    # --- Bode plot: plant only vs. plant × K --------------------------------
+    w_dense = np.logspace(-3, 3, 4000)
+    f_plot  = w_dense * w_norm / (2*np.pi)
+    mag = lambda s: np.abs(np.asarray(ct.frequency_response(s, w_dense).frdata).squeeze())
+    phd = lambda s: np.degrees(np.unwrap(np.angle(np.asarray(
+        ct.frequency_response(s, w_dense).frdata).squeeze())))
 
-A_d, B_d = np.array(K_d.A), np.array(K_d.B)
-C_d, D_d = np.array(K_d.C), np.array(K_d.D)
-n        = A_d.shape[0]
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+    title = f"Open-loop Bode  |  γ={gamma:.2f}"
+    if pm_c: title += f"  |  with K: PM={pm_c:.0f}°@{fc_c/1e3:.1f} kHz"
+    fig.suptitle(title)
+    ax1.loglog(f_plot, mag(L_ctrl), color="C0", lw=2.0, label="|G·K| with controller")
+    ax1.loglog(f_plot, mag(G_aug),  color="C3", lw=1.5, ls="--", label="|G| plant only")
+    ax1.axhline(1.0, color="gray", ls=":", lw=0.8)
+    ax1.axvline(args.xover, color="purple", ls=":", lw=0.8, label=f"{args.xover/1e3:.0f} kHz target")
+    ax1.set_ylabel("Magnitude"); ax1.grid(True, which="both", alpha=0.3); ax1.legend(fontsize=9)
 
-p_d  = np.linalg.eigvals(A_d)
-z_d  = np.array(ct.zeros(K_d)).flatten()
-K_dc = (D_d + C_d @ np.linalg.solve(np.eye(n) - A_d, B_d)).item().real
-k_d  = np.real(K_dc * np.prod(1.0 - p_d) / np.prod(1.0 - z_d))
+    ax2.semilogx(f_plot, phd(L_ctrl), color="C0", lw=2.0, label="∠(G·K)")
+    ax2.semilogx(f_plot, phd(G_aug),  color="C3", lw=1.5, ls="--", label="∠G")
+    ax2.axhline(-180, color="gray", ls=":", lw=0.8)
+    ax2.set_ylim([-360, 90])
+    ax2.set_xlabel("Frequency (Hz)"); ax2.set_ylabel("Phase (deg)")
+    ax2.grid(True, which="both", alpha=0.3); ax2.legend(fontsize=9)
+    plt.tight_layout()
+    plt.savefig("hinf_comparison.png", dpi=120)
+    print("Saved hinf_comparison.png")
 
-z_list, p_list, cancelled = list(z_d), list(p_d), 0
-for p in list(p_list):
-    for z in list(z_list):
-        if abs(p - z) / (abs(p) + 1e-30) < 1e-6:
-            p_list.remove(p); z_list.remove(z); cancelled += 1; break
-if cancelled:
-    k_d = np.real(K_dc * np.prod(1.0 - np.array(p_list))
-                       / np.prod(1.0 - np.array(z_list)))
-    print(f"Cancelled {cancelled} near-exact pole-zero pair(s)")
+    # --- Discretize (Tustin) + save ZPK --------------------------------------
+    Ts_n = (1.0 / args.fs) * w_norm
+    K_d  = ct.c2d(K, Ts_n, method="tustin")
+    A, B, C, D = np.array(K_d.A), np.array(K_d.B), np.array(K_d.C), np.array(K_d.D)
+    n     = A.shape[0]
+    p_d   = np.linalg.eigvals(A)
+    z_d   = np.array(ct.zeros(K_d)).flatten()
+    K_dc  = (D + C @ np.linalg.solve(np.eye(n) - A, B)).item().real
+    k_d   = np.real(K_dc * np.prod(1.0 - p_d) / np.prod(1.0 - z_d))
 
-z_d, p_d = np.array(z_list), np.array(p_list)
-print(f"Discrete K: {len(p_d)} poles, {len(z_d)} zeros, |p|_max={max(abs(p_d)):.6f}  "
-      f"DC gain={K_dc:.3f} ({20*np.log10(abs(K_dc)):.1f} dB)")
+    # cancel numerically-exact pole-zero pairs
+    zs, ps = list(z_d), list(p_d)
+    for p in list(ps):
+        for z in list(zs):
+            if abs(p - z) / (abs(p) + 1e-30) < 1e-6:
+                ps.remove(p); zs.remove(z); break
+    if len(ps) != len(p_d):
+        k_d = np.real(K_dc * np.prod(1.0 - np.array(ps)) / np.prod(1.0 - np.array(zs)))
+    z_d, p_d = np.array(zs), np.array(ps)
 
-np.savez("K_zpk.npz", z=z_d, p=p_d, k=k_d, fs=np.array(FS_FILTER))
-print("Saved K_zpk.npz")
+    print(f"Discrete K: {len(p_d)}p/{len(z_d)}z  |p|_max={max(abs(p_d)):.6f}  "
+          f"DC gain={K_dc:.2f} ({20*np.log10(abs(K_dc)):.1f} dB)")
+    np.savez(args.out, z=z_d, p=p_d, k=k_d, fs=np.array(args.fs))
+    print(f"Saved {args.out}")
 
-# ---------------------------------------------------------------------------
-# Export plant SOS for C++ testbench closed-loop sim
-# ---------------------------------------------------------------------------
-G_aug_d = ct.c2d(G_aug, Ts_n, method="tustin")
-zp, pp  = np.array(ct.zeros(G_aug_d)), np.array(ct.poles(G_aug_d))
-kp      = float(G_aug_d.dcgain().real)
-k_adj_p = kp * np.prod(1.0 - pp) / np.prod(1.0 - zp)
-sos_p   = sig.zpk2sos(zp, pp, np.real(k_adj_p), pairing='nearest')
+    # --- Plant SOS for the C++ testbench -------------------------------------
+    G_aug_d = ct.c2d(G_aug, Ts_n, method="tustin")
+    zp, pp  = np.array(ct.zeros(G_aug_d)), np.array(ct.poles(G_aug_d))
+    kp      = float(G_aug_d.dcgain().real) * np.prod(1.0 - pp) / np.prod(1.0 - zp)
+    sos_p   = sig.zpk2sos(zp, pp, np.real(kp), pairing='nearest')
+    print(f"\nPlant SOS for tb_freq_response.cpp (PLANT_N_SEC = {sos_p.shape[0]}):")
+    for s in sos_p:
+        print(f"    {{{s[0]:.8e}, {s[1]:.8e}, {s[2]:.8e}, {s[4]:.8e}, {s[5]:.8e}}},")
 
-print("\n=== C++ Plant Simulator SOS (paste into tb_freq_response.cpp) ===")
-print(f"const int PLANT_N_SEC = {sos_p.shape[0]};")
-print("const double PLANT_SOS[][5] = {")
-for s in sos_p:
-    print(f"    {{{s[0]:.8e}, {s[1]:.8e}, {s[2]:.8e}, {s[4]:.8e}, {s[5]:.8e}}},")
-print("};")
+    if not args.no_show:
+        plt.show()
 
-plt.show()
+
+if __name__ == "__main__":
+    main()
