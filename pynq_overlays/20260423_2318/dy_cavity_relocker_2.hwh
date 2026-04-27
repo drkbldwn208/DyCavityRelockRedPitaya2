@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
-<EDKSYSTEM EDWVERSION="1.2" TIMESTAMP="Mon Apr 27 11:18:38 2026" VIVADOVERSION="2024.1">
+<EDKSYSTEM EDWVERSION="1.2" TIMESTAMP="Thu Apr 23 23:15:53 2026" VIVADOVERSION="2024.1">
 
   <SYSTEMINFO ARCH="zynq" DEVICE="7z010" NAME="system" PACKAGE="clg400" SPEEDGRADE="-1"/>
 
@@ -1144,7 +1144,7 @@
         </BUSINTERFACE>
       </BUSINTERFACES>
     </MODULE>
-    <MODULE COREREVISION="2114583857" FULLNAME="/dy_cavity_relocker_2_0" HWVERSION="1.0" INSTANCE="dy_cavity_relocker_2_0" IPTYPE="PERIPHERAL" IS_ENABLE="1" MODCLASS="PERIPHERAL" MODTYPE="dy_cavity_relocker_2" VLNV="xilinx.com:hls:dy_cavity_relocker_2:1.0">
+    <MODULE COREREVISION="2114578815" FULLNAME="/dy_cavity_relocker_2_0" HWVERSION="1.0" INSTANCE="dy_cavity_relocker_2_0" IPTYPE="PERIPHERAL" IS_ENABLE="1" MODCLASS="PERIPHERAL" MODTYPE="dy_cavity_relocker_2" VLNV="xilinx.com:hls:dy_cavity_relocker_2:1.0">
       <DOCUMENTS/>
       <ADDRESSBLOCKS>
         <ADDRESSBLOCK ACCESS="read-write" INTERFACE="s_axi_control" NAME="Reg" RANGE="65536" USAGE="register">
@@ -1409,7 +1409,7 @@
         <PARAMETER NAME="II" VALUE="135"/>
         <PARAMETER NAME="clk_period" VALUE="8"/>
         <PARAMETER NAME="combinational" VALUE="0"/>
-        <PARAMETER NAME="latency" VALUE="147"/>
+        <PARAMETER NAME="latency" VALUE="154"/>
         <PARAMETER NAME="machine" VALUE="64"/>
         <PARAMETER NAME="EDK_IPTYPE" VALUE="PERIPHERAL"/>
         <PARAMETER NAME="C_S_AXI_CONTROL_BASEADDR" VALUE="0x40000000"/>

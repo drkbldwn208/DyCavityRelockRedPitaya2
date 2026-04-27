@@ -37,6 +37,22 @@ def load_bode_csv(path):
     phase = np.radians(phase_deg)
     return f_hz, mag * np.exp(1j * phase)
 
+def fit_levi_mag(f_hz, H, n_poles, n_zeros, n_iter=8):
+    """
+    Magnitude-only rational fit via iterated Levi.
+
+    Measured |H| is fixed throughout; the phase target is bootstrapped from
+    the current model each iteration so the measured phase is never used.
+    Typically converges in 3-5 iterations.
+    """
+    mag = np.abs(H)
+    H_target = mag.astype(complex)          # seed: zero phase
+    z, p, k = fit_levi(f_hz, H_target, n_poles, n_zeros)
+    for _ in range(n_iter - 1):
+        phase_model = np.angle(eval_zpk(z, p, k, f_hz))
+        H_target = mag * np.exp(1j * phase_model)
+        z, p, k = fit_levi(f_hz, H_target, n_poles, n_zeros)
+    return z, p, k
 
 def fit_iirrational(f_hz, H, order):
     import IIRrational.v2 as iirr
@@ -105,6 +121,8 @@ def main():
                     default="auto")
     ap.add_argument("--out",     default="plant_fit.npz",
                     help="NPZ output for ZPK (fs=0 denotes continuous-time)")
+    ap.add_argument("--mag-only", action="store_true",
+                    help="fit magnitude only; ignore measured phase (scipy backend)")
     args = ap.parse_args()
 
     if not os.path.exists(args.csv):
@@ -128,8 +146,10 @@ def main():
     if backend == "iirrational":
         z, p, k = fit_iirrational(f_hz, H_meas, order=args.poles)
     else:
-        z, p, k = fit_levi(f_hz, H_meas, args.poles, zeros_order)
-
+        if args.mag_only:
+            z, p, k = fit_levi_mag(f_hz, H_meas, args.poles, zeros_order)
+        else:
+            z, p, k = fit_levi(f_hz, H_meas, args.poles, zeros_order)
     print(f"Fit: {len(p)} poles, {len(z)} zeros, k={k:.4g}")
     print("  Poles (rad/s):", p)
     print("  Zeros (rad/s):", z)

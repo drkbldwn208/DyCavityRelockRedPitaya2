@@ -34,7 +34,7 @@ def parse_args():
     p.add_argument("--w2-dc",        type=float, default=1e-3)
     p.add_argument("--w2-corner",    type=float, default=80e3)
     p.add_argument("--w3-dc",        type=float, default=0.05)
-    p.add_argument("--w3-corner",    type=float, default=30e3)
+    p.add_argument("--w3-corner",    type=float, default=40e3)
     p.add_argument("--fs",           type=float, default=125e6/128, help="controller sample rate, Hz")
     p.add_argument("--out",          type=str,   default="K_zpk.npz")
     p.add_argument("--no-show",      action="store_true")
