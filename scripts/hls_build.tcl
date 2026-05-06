@@ -14,7 +14,7 @@ set_part {xc7z010clg400-1}
 create_clock -period 8 -name default
 
 csynth_design
-
+export_design -flow syn -rtl verilog -format ip_catalog
 export_design -format ip_catalog -output ../ip_repo/relocker_2_ip.zip
 
 exit
