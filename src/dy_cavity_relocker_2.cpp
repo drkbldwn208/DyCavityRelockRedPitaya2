@@ -120,7 +120,7 @@ static void pack_dac(hls::stream<short> &dac1_in,
     dac2_in.read(); // Discard the servo path output for now
     short dac_1_out = 200;
     short dac_2_out = -200;
-    // val_dac.data = (((uint32_t)dac_2_out & 0xFFFF) << 16) | ((uint32_t)dac_1_out & 0xFFFF);
+    val_dac.data = (((uint32_t)dac_2_out & 0xFFFF) << 16) | ((uint32_t)dac_1_out & 0xFFFF);
     val_dac.keep = 0xF;
     val_dac.strb = 0xF;
     val_dac.last = 0;

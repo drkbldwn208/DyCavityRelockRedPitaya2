@@ -31,6 +31,7 @@ create_bd_design "system"
   set dac_sel_o [ create_bd_port -dir O dac_sel_o ]
   set dac_wrt_o [ create_bd_port -dir O dac_wrt_o ]
   set dac_dat_o [ create_bd_port -dir O -from 13 -to 0 dac_dat_o ]
+  set pll_locked_o [ create_bd_port -dir O pll_locked_o ]
 
 
   # Create instance: processing_system7_0, and set properties
@@ -135,6 +136,7 @@ create_bd_design "system"
   connect_bd_net -net axis_red_pitaya_dac_0_dac_rst [get_bd_pins axis_red_pitaya_dac_0/dac_rst] [get_bd_ports dac_rst_o]
   connect_bd_net -net axis_red_pitaya_dac_0_dac_sel [get_bd_pins axis_red_pitaya_dac_0/dac_sel] [get_bd_ports dac_sel_o]
   connect_bd_net -net axis_red_pitaya_dac_0_dac_wrt [get_bd_pins axis_red_pitaya_dac_0/dac_wrt] [get_bd_ports dac_wrt_o]
+  connect_bd_net -net clk_wiz_0_locked [get_bd_pins clk_wiz_0/locked] [get_bd_ports pll_locked_o]
   connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins processing_system7_0/M_AXI_GP0_ACLK] [get_bd_pins axis_red_pitaya_adc_0/aclk] [get_bd_pins proc_sys_reset_0/slowest_sync_clk] [get_bd_pins dy_cavity_relocker_2_0/ap_clk] [get_bd_pins axis_clock_converter_0/s_axis_aclk] [get_bd_pins ps7_0_axi_periph/ACLK] [get_bd_pins ps7_0_axi_periph/S00_ACLK] [get_bd_pins ps7_0_axi_periph/M00_ACLK]
   connect_bd_net -net clk_wiz_0_clk_out2 [get_bd_pins clk_wiz_0/clk_out2] [get_bd_pins axis_red_pitaya_dac_0/ddr_clk]
   connect_bd_net -net clk_wiz_0_clk_out3 [get_bd_pins clk_wiz_0/clk_out3] [get_bd_pins axis_red_pitaya_dac_0/wrt_clk]
