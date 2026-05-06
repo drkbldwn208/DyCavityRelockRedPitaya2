@@ -5,6 +5,7 @@ update_ip_catalog
 
 add_files -norecurse ../../extern/red-pitaya-notes/cores/axis_red_pitaya_adc.v
 add_files -norecurse ../../src/axis_red_pitaya_dac.v
+add_files -norecurse ../../src/axis_constant.v
 
 add_files -fileset constrs_1 -norecurse ../../src/constraints.xdc
 
@@ -82,6 +83,16 @@ create_bd_design "system"
      return 1
    }
   
+  set block_name axis_constant
+  set block_cell_name axis_constant_0
+  if { [catch {set axis_constant_0 [create_bd_cell -type module -reference $block_name $block_cell_name] } errmsg] } {
+     catch {common::send_gid_msg -ssname BD::TCL -id 2095 -severity "ERROR" "Unable to add referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
+     return 1
+   } elseif { $axis_constant_0 eq "" } {
+     catch {common::send_gid_msg -ssname BD::TCL -id 2096 -severity "ERROR" "Unable to referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
+     return 1
+   }
+
   # Create instance: proc_sys_reset_0, and set properties
   set proc_sys_reset_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 proc_sys_reset_0 ]
 
@@ -119,7 +130,8 @@ create_bd_design "system"
   # Create interface connections
   connect_bd_intf_net -intf_net axis_clock_converter_0_M_AXIS [get_bd_intf_pins axis_clock_converter_0/M_AXIS] [get_bd_intf_pins axis_red_pitaya_dac_0/s_axis]
   connect_bd_intf_net -intf_net axis_red_pitaya_adc_0_m_axis [get_bd_intf_pins axis_red_pitaya_adc_0/m_axis] [get_bd_intf_pins dy_cavity_relocker_2_0/adc_in]
-  connect_bd_intf_net -intf_net dy_cavity_relocker_2_0_dac_out [get_bd_intf_pins dy_cavity_relocker_2_0/dac_out] [get_bd_intf_pins axis_clock_converter_0/S_AXIS]
+  # connect_bd_intf_net -intf_net dy_cavity_relocker_2_0_dac_out [get_bd_intf_pins dy_cavity_relocker_2_0/dac_out] [get_bd_intf_pins axis_clock_converter_0/S_AXIS]
+  connect_bd_intf_net -intf_net axis_constant_0_m_axis [get_bd_intf_pins axis_constant_0/m_axis] [get_bd_intf_pins axis_clock_converter_0/S_AXIS]
   connect_bd_intf_net -intf_net processing_system7_0_DDR [get_bd_intf_ports DDR] [get_bd_intf_pins processing_system7_0/DDR]
   connect_bd_intf_net -intf_net processing_system7_0_FIXED_IO [get_bd_intf_ports FIXED_IO] [get_bd_intf_pins processing_system7_0/FIXED_IO]
   connect_bd_intf_net -intf_net processing_system7_0_M_AXI_GP0 [get_bd_intf_pins processing_system7_0/M_AXI_GP0] [get_bd_intf_pins ps7_0_axi_periph/S00_AXI]
@@ -137,7 +149,7 @@ create_bd_design "system"
   connect_bd_net -net axis_red_pitaya_dac_0_dac_sel [get_bd_pins axis_red_pitaya_dac_0/dac_sel] [get_bd_ports dac_sel_o]
   connect_bd_net -net axis_red_pitaya_dac_0_dac_wrt [get_bd_pins axis_red_pitaya_dac_0/dac_wrt] [get_bd_ports dac_wrt_o]
   connect_bd_net -net clk_wiz_0_locked [get_bd_pins clk_wiz_0/locked] [get_bd_ports pll_locked_o]
-  connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins processing_system7_0/M_AXI_GP0_ACLK] [get_bd_pins axis_red_pitaya_adc_0/aclk] [get_bd_pins proc_sys_reset_0/slowest_sync_clk] [get_bd_pins dy_cavity_relocker_2_0/ap_clk] [get_bd_pins axis_clock_converter_0/s_axis_aclk] [get_bd_pins ps7_0_axi_periph/ACLK] [get_bd_pins ps7_0_axi_periph/S00_ACLK] [get_bd_pins ps7_0_axi_periph/M00_ACLK]
+  connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins processing_system7_0/M_AXI_GP0_ACLK] [get_bd_pins axis_red_pitaya_adc_0/aclk] [get_bd_pins proc_sys_reset_0/slowest_sync_clk] [get_bd_pins dy_cavity_relocker_2_0/ap_clk] [get_bd_pins axis_clock_converter_0/s_axis_aclk] [get_bd_pins ps7_0_axi_periph/ACLK] [get_bd_pins ps7_0_axi_periph/S00_ACLK] [get_bd_pins ps7_0_axi_periph/M00_ACLK] [get_bd_pins axis_constant_0/clk]
   connect_bd_net -net clk_wiz_0_clk_out2 [get_bd_pins clk_wiz_0/clk_out2] [get_bd_pins axis_red_pitaya_dac_0/ddr_clk]
   connect_bd_net -net clk_wiz_0_clk_out3 [get_bd_pins clk_wiz_0/clk_out3] [get_bd_pins axis_red_pitaya_dac_0/wrt_clk]
   connect_bd_net -net clk_wiz_0_clk_out4 [get_bd_pins clk_wiz_0/clk_out4] [get_bd_pins axis_red_pitaya_dac_0/aclk] [get_bd_pins proc_sys_reset_1/slowest_sync_clk] [get_bd_pins axis_clock_converter_0/m_axis_aclk]
