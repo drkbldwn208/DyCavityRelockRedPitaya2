@@ -61,24 +61,29 @@ static void hinf_path(hls::stream<short> &ch1_in,
 
 static void servo_path(hls::stream<short> &ch2_in, 
                        hls::stream<short> &dac2_out,
-                       bool gpio_in,
-                       int servo_offset,
-                       int servo_arm) {
+                       volatile bool *gpio_in,
+                       volatile int *servo_offset,
+                       volatile int *servo_arm) {
   State current_state = IDLE;
   short held_voltage = 0;
   short error_signal = 0;
   
   while(true) {
     #pragma HLS PIPELINE II=1
+
+    bool current_gpio = *gpio_in;
+    int current_offset = *servo_offset;
+    int current_arm = *servo_arm;
+
     bool state_toggle = false;
-    fsm_receiver(gpio_in, state_toggle);
+    fsm_receiver(current_gpio, state_toggle);
     short val_adc2 = ch2_in.read();
     short out=0;
 
     switch (current_state) {
       case IDLE:
-        out=servo_offset; // Output the servo offset to DAC channel 2 in IDLE state
-        if (servo_arm && state_toggle) {
+        out=current_offset; // Output the servo offset to DAC channel 2 in IDLE state
+        if (current_arm && state_toggle) {
           current_state = SERVO;
           held_voltage = val_adc2; // Capture the current ADC value to hold in SERVO state
         }
@@ -86,8 +91,8 @@ static void servo_path(hls::stream<short> &ch2_in,
 
       case SERVO:
         error_signal = val_adc2 - held_voltage;
-        out = (servo_offset + (error_signal >> GAIN_RIGHT_SHIFT)); // Output the servo offset plus the error signal to DAC channel 2 in SERVO state
-        
+        out = (current_offset + (error_signal >> GAIN_RIGHT_SHIFT)); // Output the servo offset plus the error signal to DAC channel 2 in SERVO state
+
         if (state_toggle)
         {
           current_state = IDLE;
@@ -138,9 +143,9 @@ static void pack_dac(hls::stream<short> &dac1_in,
 
 void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
                           hls::stream<axis_t> &dac_out,
-                          bool gpio_in,
-                          int servo_offset,
-                          int servo_arm)
+                          volatile bool *gpio_in,
+                          volatile int *servo_offset,
+                          volatile int *servo_arm)
 {
   #pragma HLS DATAFLOW
   #pragma HLS INTERFACE axis port = adc_in
