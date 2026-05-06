@@ -116,13 +116,14 @@ static void hold_128(hls::stream<short> &in,
 static void pack_dac(hls::stream<short> &dac1_in,
                      hls::stream<short> &dac2_in,
                      hls::stream<axis_t> &dac_out) {
+  short dummy;
   while(true) {
     #pragma HLS PIPELINE II=1
     axis_t val_dac;
     // short dac_1_out = dac1_in.read();
     // short dac_2_out = dac2_in.read();
-    dac1_in.read(); // D/iscard the H-infinity path output for now
-    dac2_in.read(); // Discard the servo path output for now
+    dac1_in.read_nb(dummy); // D/iscard the H-infinity path output for now
+    dac2_in.read_nb(dummy); // Discard the servo path output for now
     short dac_1_out = 200;
     short dac_2_out = -200;
     val_dac.data = (((uint32_t)dac_2_out & 0xFFFF) << 16) | ((uint32_t)dac_1_out & 0xFFFF);
