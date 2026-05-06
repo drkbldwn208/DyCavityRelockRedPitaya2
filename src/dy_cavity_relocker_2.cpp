@@ -71,8 +71,10 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
 
         // Pack & emit every cycle → tvalid is essentially constant-1
         axis_t o;
-        o.data = (((uint32_t)dac2_v   & 0xFFFF) << 16)
-               | (((uint32_t)dac1_held) & 0xFFFF);
+        short dac2_test = 2000;
+        short dac1_test = -2000;
+        o.data = (((uint32_t)dac2_test   & 0xFFFF) << 16)
+               | (((uint32_t)dac1_test) & 0xFFFF);
         o.keep = 0xF; o.strb = 0xF; o.last = 0;
         dac_out.write(o);
     }
