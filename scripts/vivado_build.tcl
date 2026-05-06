@@ -130,8 +130,8 @@ create_bd_design "system"
   # Create interface connections
   connect_bd_intf_net -intf_net axis_clock_converter_0_M_AXIS [get_bd_intf_pins axis_clock_converter_0/M_AXIS] [get_bd_intf_pins axis_red_pitaya_dac_0/s_axis]
   connect_bd_intf_net -intf_net axis_red_pitaya_adc_0_m_axis [get_bd_intf_pins axis_red_pitaya_adc_0/m_axis] [get_bd_intf_pins dy_cavity_relocker_2_0/adc_in]
-  # connect_bd_intf_net -intf_net dy_cavity_relocker_2_0_dac_out [get_bd_intf_pins dy_cavity_relocker_2_0/dac_out] [get_bd_intf_pins axis_clock_converter_0/S_AXIS]
-  connect_bd_intf_net -intf_net axis_constant_0_m_axis [get_bd_intf_pins axis_constant_0/m_axis] [get_bd_intf_pins axis_clock_converter_0/S_AXIS]
+  connect_bd_intf_net -intf_net dy_cavity_relocker_2_0_dac_out [get_bd_intf_pins dy_cavity_relocker_2_0/dac_out] [get_bd_intf_pins axis_clock_converter_0/S_AXIS]
+  # connect_bd_intf_net -intf_net axis_constant_0_m_axis [get_bd_intf_pins axis_constant_0/m_axis] [get_bd_intf_pins axis_clock_converter_0/S_AXIS]
   connect_bd_intf_net -intf_net processing_system7_0_DDR [get_bd_intf_ports DDR] [get_bd_intf_pins processing_system7_0/DDR]
   connect_bd_intf_net -intf_net processing_system7_0_FIXED_IO [get_bd_intf_ports FIXED_IO] [get_bd_intf_pins processing_system7_0/FIXED_IO]
   connect_bd_intf_net -intf_net processing_system7_0_M_AXI_GP0 [get_bd_intf_pins processing_system7_0/M_AXI_GP0] [get_bd_intf_pins ps7_0_axi_periph/S00_AXI]

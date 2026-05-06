@@ -148,10 +148,10 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
   #pragma HLS STREAM variable = ch1 depth = 8
   #pragma HLS STREAM variable = ch1_decim depth = 4
   #pragma HLS STREAM variable = ch1_decim_32 depth = 4
-  #pragma HLS STREAM variable = ch2 depth = 8
+  #pragma HLS STREAM variable = ch2 depth = 256
   #pragma HLS STREAM variable = dac1_raw depth = 4
   #pragma HLS STREAM variable = dac1 depth = 8
-  #pragma HLS STREAM variable = dac2 depth = 8
+  #pragma HLS STREAM variable = dac2 depth = 256
   
   read_adc(adc_in, ch1, ch2);
   decimate_by_4(ch1, ch1_decim);

@@ -111,5 +111,6 @@ set_property PACKAGE_PIN N16 [get_ports dac_sel_o]
 set_property PACKAGE_PIN M18 [get_ports dac_clk_o]
 set_property PACKAGE_PIN N15 [get_ports dac_rst_o]
 
+set_property PACKAGE_PIN F16 [get_ports pll_locked_o]
 set_property PACKAGE_PIN F17 [get_ports pll_locked_o]
 set_property IOSTANDARD LVCMOS33 [get_ports pll_locked_o]
