@@ -116,7 +116,7 @@ static void hold_128(hls::stream<short> &in,
 static void pack_dac(hls::stream<short> &dac1_in,
                      hls::stream<short> &dac2_in,
                      hls::stream<axis_t> &dac_out) {
-  while true {
+  while(true) {
     #pragma HLS PIPELINE II=1
     axis_t val_dac;
     // short dac_1_out = dac1_in.read();
