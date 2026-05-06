@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
-<EDKSYSTEM EDWVERSION="1.2" TIMESTAMP="Mon Apr 27 14:18:19 2026" VIVADOVERSION="2024.1">
+<EDKSYSTEM EDWVERSION="1.2" TIMESTAMP="Wed May  6 10:59:03 2026" VIVADOVERSION="2024.1">
 
   <SYSTEMINFO ARCH="zynq" DEVICE="7z010" NAME="system" PACKAGE="clg400" SPEEDGRADE="-1"/>
 
@@ -69,7 +69,7 @@
         <CONNECTION INSTANCE="processing_system7_0" PORT="DDR_RAS_n"/>
       </CONNECTIONS>
     </PORT>
-    <PORT DIR="IO" NAME="DDR_reset_n" POLARITY="ACTIVE_LOW" SIGIS="rst" SIGNAME="processing_system7_0_DDR_DRSTB">
+    <PORT DIR="IO" NAME="DDR_reset_n" SIGIS="rst" SIGNAME="processing_system7_0_DDR_DRSTB">
       <CONNECTIONS>
         <CONNECTION INSTANCE="processing_system7_0" PORT="DDR_DRSTB"/>
       </CONNECTIONS>
@@ -159,6 +159,11 @@
     <PORT DIR="O" NAME="dac_wrt_o" SIGIS="undef" SIGNAME="axis_red_pitaya_dac_0_dac_wrt">
       <CONNECTIONS>
         <CONNECTION INSTANCE="axis_red_pitaya_dac_0" PORT="dac_wrt"/>
+      </CONNECTIONS>
+    </PORT>
+    <PORT DIR="O" NAME="locked_0" SIGIS="undef" SIGNAME="clk_wiz_0_locked">
+      <CONNECTIONS>
+        <CONNECTION INSTANCE="clk_wiz_0" PORT="locked"/>
       </CONNECTIONS>
     </PORT>
   </EXTERNALPORTS>
@@ -1129,6 +1134,7 @@
         </PORT>
         <PORT DIR="O" NAME="locked" SIGIS="undef" SIGNAME="clk_wiz_0_locked">
           <CONNECTIONS>
+            <CONNECTION INSTANCE="External_Ports" PORT="locked_0"/>
             <CONNECTION INSTANCE="axis_red_pitaya_dac_0" PORT="locked"/>
           </CONNECTIONS>
         </PORT>

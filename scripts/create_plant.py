@@ -44,16 +44,21 @@ ZEROS_HZ = sum([
     # complex_pair(4.8e3, Q=2),
     # complex_pair(70e3, Q=0.4),
     # complex_pair(13e3, Q=25),
-    complex_pair(42134.4, Q=1)
+    # complex_pair(42134.4, Q=1)
+    real_root(22.7863e3),
+    real_root(22.7856e3)
 ], [])
 
 POLES_HZ = sum([
     # Add your poles here
-    complex_pair(2744.1, Q=3.11)   # Example: Overdamped 2nd order roll-off
+    # complex_pair(2744.1, Q=3.11)   # Example: Overdamped 2nd order roll-off
+    real_root(10), # Pole representing integator action
+    real_root(0.841579e3),
+    real_root(0.841358e3)
 ], [])
 
 # Set the desired DC gain of the plant
-TARGET_DC_GAIN = 10.0
+TARGET_DC_GAIN = 10000.0
 OUTPUT_FILE = "custom_plant.npz"
 
 # =========================================================================

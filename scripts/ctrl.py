@@ -10,8 +10,8 @@ via the --plant-npz flag when you have real measurement data.
   python3 scripts/ctrl.py --plant-npz fit.npz  # use measured plant
 
 Outputs:
-  K_zpk.npz            — discrete controller ZPK (consumed by coeffs_analyze.py)
-  hinf_comparison.png  — 3-panel Bode: Loop Gain, Phase, and Sensitivity
+  K_zpk.npz           — discrete controller ZPK (consumed by coeffs_analyze.py)
+  hinf_comparison.png — 3-panel Bode: Loop Gain, Phase, and Sensitivity
 """
 
 import argparse
@@ -52,8 +52,6 @@ def makeweight(dcgain, wc_norm, hfgain):
         return ct.tf([1.0/M, wc_norm], [1.0, wc_norm * A])
     M, A = hfgain, dcgain / hfgain
     return ct.tf([1.0, wc_norm * A], [1.0/M, wc_norm])
-
-
 
 
 def build_plant(args, w_norm):
@@ -194,6 +192,17 @@ def main():
 
     print(f"Discrete K: {len(p_d)}p/{len(z_d)}z  |p|_max={max(abs(p_d)):.6f}  "
           f"DC gain={K_dc:.2f} ({20*np.log10(abs(K_dc)):.1f} dB)")
+          
+    # --- ADDED: Explicitly print exact discrete poles and zeros ---
+    print("\n--- Exact Discrete Controller Poles ---")
+    for i, p in enumerate(p_d):
+        print(f"  p_{i}: {p}")
+        
+    print("\n--- Exact Discrete Controller Zeros ---")
+    for i, z in enumerate(z_d):
+        print(f"  z_{i}: {z}")
+    print("---------------------------------------")
+
     np.savez(args.out, z=z_d, p=p_d, k=k_d, fs=np.array(args.fs))
     print(f"Saved {args.out}")
 

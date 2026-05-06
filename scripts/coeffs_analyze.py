@@ -39,6 +39,20 @@ def main():
     d = np.load(args.zpk)
     z_d, p_d, k_d = d["z"], d["p"], d["k"]
     fs = float(d["fs"])
+    
+    # --- ADDED: Explicitly print exact continuous-equivalent locations in Hz ---
+    print("\n--- Exact Pole/Zero Locations (Hz) ---")
+    print("Poles:")
+    for i, p in enumerate(p_d):
+        f_hz = np.log(complex(p)) * fs / (2 * np.pi)
+        print(f"  p_{i}: {f_hz.real:+.3f} {f_hz.imag:+.3f}j Hz (mag: {abs(f_hz):.3f} Hz)")
+        
+    print("Zeros:")
+    for i, z in enumerate(z_d):
+        f_hz = np.log(complex(z)) * fs / (2 * np.pi)
+        print(f"  z_{i}: {f_hz.real:+.3f} {f_hz.imag:+.3f}j Hz (mag: {abs(f_hz):.3f} Hz)")
+    print("--------------------------------------\n")
+
     sos = sig.zpk2sos(z_d, p_d, k_d, pairing='nearest')
     n_sec = sos.shape[0]
     print(f"Controller: {len(p_d)} poles  fs={fs/1e6:.4f} MHz  → {n_sec} SOS sections")
