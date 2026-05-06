@@ -3,6 +3,9 @@ create_project dy_cavity_relocker_2 . -part xc7z010clg400-1 -force
 set_property ip_repo_paths {../hls_workspace/dy_cavity_relocker_2/solution1/impl/ip} [current_project]
 update_ip_catalog
 
+# report_ip_status -name ip_status
+# upgrade_ip [get_ips -all] -quiet
+
 add_files -norecurse ../../extern/red-pitaya-notes/cores/axis_red_pitaya_adc.v
 add_files -norecurse ../../src/axis_red_pitaya_dac.v
 add_files -norecurse ../../src/axis_constant.v
