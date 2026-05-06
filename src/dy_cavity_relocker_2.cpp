@@ -13,16 +13,17 @@ static void read_adc(hls::stream<axis_t> &adc_in,
   }
 }
 
-static void decimate_by_4(hls::stream<short> &in,
-                         hls::stream<short> &out) 
-{
-  for (int j = 0; j < 32; j++) {
-    int32_t acc = 0;
-    for (int i = 0; i < 4; i++) {
-      #pragma HLS PIPELINE II=1
-      acc += in.read();
+static void decimate_by_4(hls::stream<short> &in, hls::stream<short> &out) {
+  int32_t acc = 0;
+  for (int i = 0; i < 128; i++) {
+    #pragma HLS PIPELINE II=1
+    acc += in.read();
+
+    // Every 4th sample, write the output and reset the accumulator
+    if ((i % 4) == 3) {
+      out.write((short)(acc >> 2));
+      acc = 0;
     }
-  out.write((short)(acc >> 2)); // Output the average of 4 samples
   }
 }
 
