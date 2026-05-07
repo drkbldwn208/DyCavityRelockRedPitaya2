@@ -35,8 +35,8 @@
 #define HINF_COEF_TOTAL_BITS (HINF_COEF_INT_BITS + HINF_COEF_FRAC_BITS)
 
 typedef ap_fixed<16, 1,  AP_TRN, AP_SAT> sig_t;
-typedef ap_fixed<32, 12, AP_TRN, AP_SAT> pipe_t;
-typedef ap_fixed<64, 24, AP_TRN, AP_SAT> acc_t;
+typedef ap_fixed<32, 12, AP_TRN, AP_WRAP> pipe_t;
+typedef ap_fixed<64, 24, AP_TRN, AP_WRAP> acc_t;
 typedef ap_fixed<HINF_COEF_TOTAL_BITS, HINF_COEF_INT_BITS> coeff_t;
 
 
