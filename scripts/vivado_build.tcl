@@ -169,9 +169,8 @@ create_bd_design "system"
     CONFIG.CHANNEL_ENABLE_VAUXP9_VAUXN9 {true} \
     CONFIG.CHANNEL_ENABLE_VP_VN {true} \
     CONFIG.EXTERNAL_MUX_CHANNEL {VP_VN} \
-    CONFIG.SEQUENCER_MODE {Off} \
-    CONFIG.SINGLE_CHANNEL_SELECTION {TEMPERATURE} \
-    CONFIG.XADC_STARUP_SELECTION {independent_adc} \
+    CONFIG.SEQUENCER_MODE {Continuous} \
+    CONFIG.XADC_STARUP_SELECTION {channel_sequencer} \
   ] $xadc_wiz_0
 
 
