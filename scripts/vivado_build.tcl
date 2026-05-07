@@ -22,6 +22,18 @@ create_bd_design "system"
 
   set FIXED_IO [ create_bd_intf_port -mode Master -vlnv xilinx.com:display_processing_system7:fixedio_rtl:1.0 FIXED_IO ]
 
+  set Vaux0_v_p [ create_bd_port -dir I Vaux0_v_p ]
+  set Vaux0_v_n [ create_bd_port -dir I Vaux0_v_n ]
+  set Vaux1_v_p [ create_bd_port -dir I Vaux1_v_p ]
+  set Vaux1_v_n [ create_bd_port -dir I Vaux1_v_n ]
+  set Vaux8_v_p [ create_bd_port -dir I Vaux8_v_p ]
+  set Vaux8_v_n [ create_bd_port -dir I Vaux8_v_n ]
+  set Vaux9_v_p [ create_bd_port -dir I Vaux9_v_p ]
+  set Vaux9_v_n [ create_bd_port -dir I Vaux9_v_n ]
+  set Vp_Vn_v_p [ create_bd_port -dir I Vp_Vn_v_p ]
+  set Vp_Vn_v_n [ create_bd_port -dir I Vp_Vn_v_n ]
+
+
 
   # Create ports
   set adc_enc_p_o [ create_bd_port -dir O adc_enc_p_o ]
@@ -120,7 +132,7 @@ create_bd_design "system"
 
   # Create instance: ps7_0_axi_periph, and set properties
   set ps7_0_axi_periph [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 ps7_0_axi_periph ]
-  set_property CONFIG.NUM_MI {2} $ps7_0_axi_periph
+  set_property CONFIG.NUM_MI {3} $ps7_0_axi_periph
 
    # Create instance: pdm_wrapper_0, and set properties
   set block_name pdm_wrapper
@@ -148,6 +160,22 @@ create_bd_design "system"
   set axi_gpio_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio:2.0 axi_gpio_0 ]
   set_property CONFIG.C_ALL_OUTPUTS {1} $axi_gpio_0
 
+  # Create instance: xadc_wiz_0, and set properties
+  set xadc_wiz_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:xadc_wiz:3.3 xadc_wiz_0 ]
+  set_property -dict [list \
+    CONFIG.CHANNEL_ENABLE_VAUXP0_VAUXN0 {true} \
+    CONFIG.CHANNEL_ENABLE_VAUXP1_VAUXN1 {true} \
+    CONFIG.CHANNEL_ENABLE_VAUXP8_VAUXN8 {true} \
+    CONFIG.CHANNEL_ENABLE_VAUXP9_VAUXN9 {true} \
+    CONFIG.CHANNEL_ENABLE_VP_VN {true} \
+    CONFIG.EXTERNAL_MUX_CHANNEL {VP_VN} \
+    CONFIG.SEQUENCER_MODE {Off} \
+    CONFIG.SINGLE_CHANNEL_SELECTION {TEMPERATURE} \
+    CONFIG.XADC_STARUP_SELECTION {independent_adc} \
+  ] $xadc_wiz_0
+
+
+
   # Create interface connections
   connect_bd_intf_net -intf_net axis_clock_converter_0_M_AXIS [get_bd_intf_pins axis_clock_converter_0/M_AXIS] [get_bd_intf_pins axis_red_pitaya_dac_0/s_axis]
   connect_bd_intf_net -intf_net axis_red_pitaya_adc_0_m_axis [get_bd_intf_pins axis_red_pitaya_adc_0/m_axis] [get_bd_intf_pins dy_cavity_relocker_2_0/adc_in]
@@ -157,6 +185,7 @@ create_bd_design "system"
   connect_bd_intf_net -intf_net processing_system7_0_M_AXI_GP0 [get_bd_intf_pins processing_system7_0/M_AXI_GP0] [get_bd_intf_pins ps7_0_axi_periph/S00_AXI]
   connect_bd_intf_net -intf_net ps7_0_axi_periph_M00_AXI [get_bd_intf_pins ps7_0_axi_periph/M00_AXI] [get_bd_intf_pins dy_cavity_relocker_2_0/s_axi_control]
   connect_bd_intf_net -intf_net ps7_0_axi_periph_M01_AXI [get_bd_intf_pins ps7_0_axi_periph/M01_AXI] [get_bd_intf_pins axi_gpio_0/S_AXI]
+  connect_bd_intf_net -intf_net ps7_0_axi_periph_M02_AXI [get_bd_intf_pins ps7_0_axi_periph/M02_AXI] [get_bd_intf_pins xadc_wiz_0/s_axi_lite]
 
 
   connect_bd_net -net adc_clk_n_i_1 [get_bd_ports adc_clk_n_i] [get_bd_pins clk_wiz_0/clk_in1_n]
@@ -170,23 +199,34 @@ create_bd_design "system"
   connect_bd_net -net axis_red_pitaya_dac_0_dac_sel [get_bd_pins axis_red_pitaya_dac_0/dac_sel] [get_bd_ports dac_sel_o]
   connect_bd_net -net axis_red_pitaya_dac_0_dac_wrt [get_bd_pins axis_red_pitaya_dac_0/dac_wrt] [get_bd_ports dac_wrt_o]
   connect_bd_net -net clk_wiz_0_locked [get_bd_pins clk_wiz_0/locked] [get_bd_ports pll_locked_o]
-  connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins processing_system7_0/M_AXI_GP0_ACLK] [get_bd_pins axis_red_pitaya_adc_0/aclk] [get_bd_pins proc_sys_reset_0/slowest_sync_clk] [get_bd_pins dy_cavity_relocker_2_0/ap_clk] [get_bd_pins axis_clock_converter_0/s_axis_aclk] [get_bd_pins ps7_0_axi_periph/ACLK] [get_bd_pins ps7_0_axi_periph/S00_ACLK] [get_bd_pins ps7_0_axi_periph/M00_ACLK] [get_bd_pins ps7_0_axi_periph/M01_ACLK] [get_bd_pins pdm_wrapper_0/clk] [get_bd_pins axi_gpio_0/s_axi_aclk]
+  connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins processing_system7_0/M_AXI_GP0_ACLK] [get_bd_pins axis_red_pitaya_adc_0/aclk] [get_bd_pins proc_sys_reset_0/slowest_sync_clk] [get_bd_pins dy_cavity_relocker_2_0/ap_clk] [get_bd_pins axis_clock_converter_0/s_axis_aclk] [get_bd_pins ps7_0_axi_periph/ACLK] [get_bd_pins ps7_0_axi_periph/S00_ACLK] [get_bd_pins ps7_0_axi_periph/M00_ACLK] [get_bd_pins ps7_0_axi_periph/M01_ACLK] [get_bd_pins ps7_0_axi_periph/M02_ACLK] [get_bd_pins pdm_wrapper_0/clk] [get_bd_pins axi_gpio_0/s_axi_aclk] [get_bd_pins xadc_wiz_0/s_axi_aclk]
   connect_bd_net -net clk_wiz_0_clk_out2 [get_bd_pins clk_wiz_0/clk_out2] [get_bd_pins axis_red_pitaya_dac_0/ddr_clk]
   connect_bd_net -net clk_wiz_0_clk_out3 [get_bd_pins clk_wiz_0/clk_out3] [get_bd_pins axis_red_pitaya_dac_0/wrt_clk]
   connect_bd_net -net clk_wiz_0_clk_out4 [get_bd_pins clk_wiz_0/clk_out4] [get_bd_pins axis_red_pitaya_dac_0/aclk] [get_bd_pins proc_sys_reset_1/slowest_sync_clk] [get_bd_pins axis_clock_converter_0/m_axis_aclk]
   connect_bd_net -net clk_wiz_0_locked [get_bd_pins clk_wiz_0/locked] [get_bd_pins axis_red_pitaya_dac_0/locked]
-  connect_bd_net -net proc_sys_reset_0_peripheral_aresetn [get_bd_pins proc_sys_reset_0/peripheral_aresetn] [get_bd_pins axis_clock_converter_0/s_axis_aresetn] [get_bd_pins dy_cavity_relocker_2_0/ap_rst_n] [get_bd_pins ps7_0_axi_periph/S00_ARESETN] [get_bd_pins ps7_0_axi_periph/M00_ARESETN] [get_bd_pins ps7_0_axi_periph/M01_ARESETN] [get_bd_pins ps7_0_axi_periph/ARESETN] [get_bd_pins pdm_wrapper_0/rstn] [get_bd_pins axi_gpio_0/s_axi_aresetn]
+  connect_bd_net -net proc_sys_reset_0_peripheral_aresetn [get_bd_pins proc_sys_reset_0/peripheral_aresetn] [get_bd_pins axis_clock_converter_0/s_axis_aresetn] [get_bd_pins dy_cavity_relocker_2_0/ap_rst_n] [get_bd_pins ps7_0_axi_periph/S00_ARESETN] [get_bd_pins ps7_0_axi_periph/M00_ARESETN] [get_bd_pins ps7_0_axi_periph/M01_ARESETN] [get_bd_pins ps7_0_axi_periph/M02_ARESETN] [get_bd_pins ps7_0_axi_periph/ARESETN] [get_bd_pins pdm_wrapper_0/rstn] [get_bd_pins axi_gpio_0/s_axi_aresetn] [get_bd_pins xadc_wiz_0/s_axi_aresetn]
   connect_bd_net -net proc_sys_reset_1_peripheral_aresetn [get_bd_pins proc_sys_reset_1/peripheral_aresetn] [get_bd_pins axis_clock_converter_0/m_axis_aresetn]
   connect_bd_net -net processing_system7_0_FCLK_RESET0_N [get_bd_pins processing_system7_0/FCLK_RESET0_N] [get_bd_pins proc_sys_reset_0/ext_reset_in] [get_bd_pins proc_sys_reset_1/ext_reset_in]
   connect_bd_net -net dac_gpio [get_bd_pins axi_gpio_0/gpio_io_o] [get_bd_pins pdm_wrapper_0/cfg]
   connect_bd_net -net pdm_0 [get_bd_pins pdm_wrapper_0/pdm] [get_bd_ports pdm_0]
   connect_bd_net -net xlconstant_0_dout [get_bd_pins xlconstant_0/dout] [get_bd_pins pdm_wrapper_0/rng]
   connect_bd_net -net xlconstant_1_dout [get_bd_pins xlconstant_1/dout] [get_bd_pins pdm_wrapper_0/ena]
+  connect_bd_net [get_bd_ports Vaux0_v_p] [get_bd_pins xadc_wiz_0/vauxp0]
+  connect_bd_net [get_bd_ports Vaux0_v_n] [get_bd_pins xadc_wiz_0/vauxn0]
+  connect_bd_net [get_bd_ports Vaux1_v_p] [get_bd_pins xadc_wiz_0/vauxp1]
+  connect_bd_net [get_bd_ports Vaux1_v_n] [get_bd_pins xadc_wiz_0/vauxn1]
+  connect_bd_net [get_bd_ports Vaux8_v_p] [get_bd_pins xadc_wiz_0/vauxp8]
+  connect_bd_net [get_bd_ports Vaux8_v_n] [get_bd_pins xadc_wiz_0/vauxn8]
+  connect_bd_net [get_bd_ports Vaux9_v_p] [get_bd_pins xadc_wiz_0/vauxp9]
+  connect_bd_net [get_bd_ports Vaux9_v_n] [get_bd_pins xadc_wiz_0/vauxn9]
+  connect_bd_net [get_bd_ports Vp_Vn_v_p] [get_bd_pins xadc_wiz_0/vp_in]
+  connect_bd_net [get_bd_ports Vp_Vn_v_n] [get_bd_pins xadc_wiz_0/vn_in]
 
 
   # Create address segments
   assign_bd_address -offset 0x40010000 -range 0x00010000 -target_address_space [get_bd_addr_spaces processing_system7_0/Data] [get_bd_addr_segs axi_gpio_0/S_AXI/Reg] -force
   assign_bd_address -offset 0x40000000 -range 0x00010000 -target_address_space [get_bd_addr_spaces processing_system7_0/Data] [get_bd_addr_segs dy_cavity_relocker_2_0/s_axi_control/Reg] -force
+  assign_bd_address -offset 0x44A00000 -range 0x00010000 -target_address_space [get_bd_addr_spaces processing_system7_0/Data] [get_bd_addr_segs xadc_wiz_0/s_axi_lite/Reg] -force
 
 validate_bd_design
 
