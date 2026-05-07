@@ -8,7 +8,8 @@ update_ip_catalog
 
 add_files -norecurse ../../extern/red-pitaya-notes/cores/axis_red_pitaya_adc.v
 add_files -norecurse ../../src/axis_red_pitaya_dac.v
-add_files -norecurse ../../src/axis_constant.v
+add_files -norecurse ../../src/red_pitaya_pdm.sv
+add_files -norecurse ../../src/pdm_wrapper.v
 
 add_files -fileset constrs_1 -norecurse ../../src/constraints.xdc
 
@@ -36,6 +37,7 @@ create_bd_design "system"
   set dac_wrt_o [ create_bd_port -dir O dac_wrt_o ]
   set dac_dat_o [ create_bd_port -dir O -from 13 -to 0 dac_dat_o ]
   set pll_locked_o [ create_bd_port -dir O pll_locked_o ]
+  set pdm_0 [ create_bd_port -dir O -from 3 -to 0 pdm_0 ]
 
 
   # Create instance: processing_system7_0, and set properties
@@ -86,15 +88,6 @@ create_bd_design "system"
      return 1
    }
 
-  set block_name axis_constant
-  set block_cell_name axis_constant_0
-  if { [catch {set axis_constant_0 [create_bd_cell -type module -reference $block_name $block_cell_name] } errmsg] } {
-     catch {common::send_gid_msg -ssname BD::TCL -id 2095 -severity "ERROR" "Unable to add referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
-     return 1
-   } elseif { $axis_constant_0 eq "" } {
-     catch {common::send_gid_msg -ssname BD::TCL -id 2096 -severity "ERROR" "Unable to referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
-     return 1
-   }
 
   # Create instance: proc_sys_reset_0, and set properties
   set proc_sys_reset_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 proc_sys_reset_0 ]
@@ -127,24 +120,44 @@ create_bd_design "system"
 
   # Create instance: ps7_0_axi_periph, and set properties
   set ps7_0_axi_periph [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect:2.1 ps7_0_axi_periph ]
-  set_property CONFIG.NUM_MI {1} $ps7_0_axi_periph
+  set_property CONFIG.NUM_MI {2} $ps7_0_axi_periph
 
+   # Create instance: pdm_wrapper_0, and set properties
+  set block_name pdm_wrapper
+  set block_cell_name pdm_wrapper_0
+  if { [catch {set pdm_wrapper_0 [create_bd_cell -type module -reference $block_name $block_cell_name] } errmsg] } {
+     catch {common::send_gid_msg -ssname BD::TCL -id 2095 -severity "ERROR" "Unable to add referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
+     return 1
+   } elseif { $pdm_wrapper_0 eq "" } {
+     catch {common::send_gid_msg -ssname BD::TCL -id 2096 -severity "ERROR" "Unable to referenced block <$block_name>. Please add the files for ${block_name}'s definition into the project."}
+     return 1
+   }
+  
+  # Create instance: xlconstant_0, and set properties
   set xlconstant_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_0 ]
+  set_property -dict [list \
+    CONFIG.CONST_VAL {255} \
+    CONFIG.CONST_WIDTH {8} \
+  ] $xlconstant_0
 
+
+  # Create instance: xlconstant_1, and set properties
+  set xlconstant_1 [ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant:1.1 xlconstant_1 ]
+
+  # Create instance: axi_gpio_0, and set properties
+  set axi_gpio_0 [ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio:2.0 axi_gpio_0 ]
+  set_property CONFIG.C_ALL_OUTPUTS {1} $axi_gpio_0
 
   # Create interface connections
   connect_bd_intf_net -intf_net axis_clock_converter_0_M_AXIS [get_bd_intf_pins axis_clock_converter_0/M_AXIS] [get_bd_intf_pins axis_red_pitaya_dac_0/s_axis]
   connect_bd_intf_net -intf_net axis_red_pitaya_adc_0_m_axis [get_bd_intf_pins axis_red_pitaya_adc_0/m_axis] [get_bd_intf_pins dy_cavity_relocker_2_0/adc_in]
   connect_bd_intf_net -intf_net dy_cavity_relocker_2_0_dac_out [get_bd_intf_pins dy_cavity_relocker_2_0/dac_out] [get_bd_intf_pins axis_clock_converter_0/S_AXIS]
-  # connect_bd_intf_net -intf_net axis_constant_0_m_axis [get_bd_intf_pins axis_constant_0/m_axis] [get_bd_intf_pins axis_clock_converter_0/S_AXIS]
   connect_bd_intf_net -intf_net processing_system7_0_DDR [get_bd_intf_ports DDR] [get_bd_intf_pins processing_system7_0/DDR]
   connect_bd_intf_net -intf_net processing_system7_0_FIXED_IO [get_bd_intf_ports FIXED_IO] [get_bd_intf_pins processing_system7_0/FIXED_IO]
   connect_bd_intf_net -intf_net processing_system7_0_M_AXI_GP0 [get_bd_intf_pins processing_system7_0/M_AXI_GP0] [get_bd_intf_pins ps7_0_axi_periph/S00_AXI]
   connect_bd_intf_net -intf_net ps7_0_axi_periph_M00_AXI [get_bd_intf_pins ps7_0_axi_periph/M00_AXI] [get_bd_intf_pins dy_cavity_relocker_2_0/s_axi_control]
+  connect_bd_intf_net -intf_net ps7_0_axi_periph_M01_AXI [get_bd_intf_pins ps7_0_axi_periph/M01_AXI] [get_bd_intf_pins axi_gpio_0/S_AXI]
 
-  # Create port connections
-  # connect_bd_net -net dy_cavity_relocker_2_0_dac_out_TDATA [get_bd_pins dy_cavity_relocker_2_0/dac_out_TDATA] [get_bd_pins axis_clock_converter_0/s_axis_tdata]
-  # connect_bd_net -net xlconstant_0_dout [get_bd_pins xlconstant_0/dout] [get_bd_pins axis_clock_converter_0/s_axis_tvalid]
 
   connect_bd_net -net adc_clk_n_i_1 [get_bd_ports adc_clk_n_i] [get_bd_pins clk_wiz_0/clk_in1_n]
   connect_bd_net -net adc_clk_p_i_1 [get_bd_ports adc_clk_p_i] [get_bd_pins clk_wiz_0/clk_in1_p]
@@ -157,22 +170,30 @@ create_bd_design "system"
   connect_bd_net -net axis_red_pitaya_dac_0_dac_sel [get_bd_pins axis_red_pitaya_dac_0/dac_sel] [get_bd_ports dac_sel_o]
   connect_bd_net -net axis_red_pitaya_dac_0_dac_wrt [get_bd_pins axis_red_pitaya_dac_0/dac_wrt] [get_bd_ports dac_wrt_o]
   connect_bd_net -net clk_wiz_0_locked [get_bd_pins clk_wiz_0/locked] [get_bd_ports pll_locked_o]
-  connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins processing_system7_0/M_AXI_GP0_ACLK] [get_bd_pins axis_red_pitaya_adc_0/aclk] [get_bd_pins proc_sys_reset_0/slowest_sync_clk] [get_bd_pins dy_cavity_relocker_2_0/ap_clk] [get_bd_pins axis_clock_converter_0/s_axis_aclk] [get_bd_pins ps7_0_axi_periph/ACLK] [get_bd_pins ps7_0_axi_periph/S00_ACLK] [get_bd_pins ps7_0_axi_periph/M00_ACLK] [get_bd_pins axis_constant_0/clk]
+  connect_bd_net -net clk_wiz_0_clk_out1 [get_bd_pins clk_wiz_0/clk_out1] [get_bd_pins processing_system7_0/M_AXI_GP0_ACLK] [get_bd_pins axis_red_pitaya_adc_0/aclk] [get_bd_pins proc_sys_reset_0/slowest_sync_clk] [get_bd_pins dy_cavity_relocker_2_0/ap_clk] [get_bd_pins axis_clock_converter_0/s_axis_aclk] [get_bd_pins ps7_0_axi_periph/ACLK] [get_bd_pins ps7_0_axi_periph/S00_ACLK] [get_bd_pins ps7_0_axi_periph/M00_ACLK] [get_bd_pins ps7_0_axi_periph/M01_ACLK] [get_bd_pins pdm_wrapper_0/clk] [get_bd_pins axi_gpio_0/s_axi_aclk]
   connect_bd_net -net clk_wiz_0_clk_out2 [get_bd_pins clk_wiz_0/clk_out2] [get_bd_pins axis_red_pitaya_dac_0/ddr_clk]
   connect_bd_net -net clk_wiz_0_clk_out3 [get_bd_pins clk_wiz_0/clk_out3] [get_bd_pins axis_red_pitaya_dac_0/wrt_clk]
   connect_bd_net -net clk_wiz_0_clk_out4 [get_bd_pins clk_wiz_0/clk_out4] [get_bd_pins axis_red_pitaya_dac_0/aclk] [get_bd_pins proc_sys_reset_1/slowest_sync_clk] [get_bd_pins axis_clock_converter_0/m_axis_aclk]
   connect_bd_net -net clk_wiz_0_locked [get_bd_pins clk_wiz_0/locked] [get_bd_pins axis_red_pitaya_dac_0/locked]
-  connect_bd_net -net proc_sys_reset_0_peripheral_aresetn [get_bd_pins proc_sys_reset_0/peripheral_aresetn] [get_bd_pins axis_clock_converter_0/s_axis_aresetn] [get_bd_pins dy_cavity_relocker_2_0/ap_rst_n] [get_bd_pins ps7_0_axi_periph/S00_ARESETN] [get_bd_pins ps7_0_axi_periph/M00_ARESETN] [get_bd_pins ps7_0_axi_periph/ARESETN]
+  connect_bd_net -net proc_sys_reset_0_peripheral_aresetn [get_bd_pins proc_sys_reset_0/peripheral_aresetn] [get_bd_pins axis_clock_converter_0/s_axis_aresetn] [get_bd_pins dy_cavity_relocker_2_0/ap_rst_n] [get_bd_pins ps7_0_axi_periph/S00_ARESETN] [get_bd_pins ps7_0_axi_periph/M00_ARESETN] [get_bd_pins ps7_0_axi_periph/M01_ARESETN] [get_bd_pins ps7_0_axi_periph/ARESETN] [get_bd_pins pdm_wrapper_0/rstn] [get_bd_pins axi_gpio_0/s_axi_aresetn]
   connect_bd_net -net proc_sys_reset_1_peripheral_aresetn [get_bd_pins proc_sys_reset_1/peripheral_aresetn] [get_bd_pins axis_clock_converter_0/m_axis_aresetn]
   connect_bd_net -net processing_system7_0_FCLK_RESET0_N [get_bd_pins processing_system7_0/FCLK_RESET0_N] [get_bd_pins proc_sys_reset_0/ext_reset_in] [get_bd_pins proc_sys_reset_1/ext_reset_in]
+  connect_bd_net -net dac_gpio [get_bd_pins axi_gpio_0/gpio_io_o] [get_bd_pins pdm_wrapper_0/cfg]
+  connect_bd_net -net pdm_0 [get_bd_pins pdm_wrapper_0/pdm] [get_bd_ports pdm_0]
+  connect_bd_net -net xlconstant_0_dout [get_bd_pins xlconstant_0/dout] [get_bd_pins pdm_wrapper_0/rng]
+  connect_bd_net -net xlconstant_1_dout [get_bd_pins xlconstant_1/dout] [get_bd_pins pdm_wrapper_0/ena]
+
 
   # Create address segments
+  assign_bd_address -offset 0x40010000 -range 0x00010000 -target_address_space [get_bd_addr_spaces processing_system7_0/Data] [get_bd_addr_segs axi_gpio_0/S_AXI/Reg] -force
   assign_bd_address -offset 0x40000000 -range 0x00010000 -target_address_space [get_bd_addr_spaces processing_system7_0/Data] [get_bd_addr_segs dy_cavity_relocker_2_0/s_axi_control/Reg] -force
 
 validate_bd_design
 
 make_wrapper -files [get_files ./dy_cavity_relocker_2.srcs/sources_1/bd/system/system.bd] -top
 add_files -norecurse ./dy_cavity_relocker_2.srcs/sources_1/bd/system/hdl/system_wrapper.v
+set_property top system_wrapper [current_fileset]
+update_compile_order -fileset sources_1
 
 launch_runs impl_1 -to_step write_bitstream -jobs 10
 wait_on_run impl_1

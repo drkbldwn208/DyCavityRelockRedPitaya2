@@ -54,15 +54,15 @@ def plot_time(sim_dir, csv_name, title, ref_line=None):
     if not os.path.exists(path):
         return
     rows = read_csv(path)
-    n = [int(r["frame"])         for r in rows]
-    y = [int(r["output_ch1"])    for r in rows]
+    n = [int(r["sample"])         for r in rows]
+    y = [int(r["output"])    for r in rows]
 
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(n, y, lw=1.0)
     if ref_line is not None:
         ax.axhline(ref_line, color="red", ls="--", alpha=0.5, label=f"ref={ref_line}")
         ax.legend()
-    ax.set_xlabel("Frame"); ax.set_ylabel("Output ch1")
+    ax.set_xlabel("Sample"); ax.set_ylabel("Output")
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
 

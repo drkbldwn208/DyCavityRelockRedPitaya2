@@ -24,8 +24,8 @@ enum State
 
 void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
                           hls::stream<axis_t> &dac_out,
-                          bool gpio_in,
-                          int servo_offset,
-                          int servo_arm);
+                          volatile bool *gpio_in,
+                          volatile int *servo_offset,
+                          volatile int *servo_arm);
 
 #endif
