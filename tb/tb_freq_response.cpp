@@ -46,9 +46,12 @@ static inline short sig_to_short(sig_t s) {
 struct MeasResult { double gain_db, phase_deg, peak_out, rms_out; };
 
 // Plant SOS — paste from ctrl.py "Plant SOS for tb_freq_response.cpp"
-const int PLANT_N_SEC = 1;
+const int PLANT_N_SEC = 4;
 const double PLANT_SOS[][5] = {
-    {7.01024743e-02, 1.40204949e-01, 7.01024743e-02, -7.11018449e-01, -8.57165403e-03},
+    {3.26302300e-01, 8.44533729e-03, -3.17856962e-01, -1.93554675e+00, 9.36433048e-01},
+    {1.00000000e+00, -1.99967573e+00, 9.99947449e-01, -1.99807241e+00, 9.98324125e-01},
+    {1.00000000e+00, -1.99913291e+00, 9.99825493e-01, -2.00050412e+00, 1.00119477e+00},
+    {1.00000000e+00, -1.99849103e+00, 9.99842686e-01, -1.99816854e+00, 9.99508667e-01},
 };
 
 class PlantSimulator {
