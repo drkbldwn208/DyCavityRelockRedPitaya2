@@ -62,11 +62,15 @@ def build_plant(args, w_norm):
         kc = float(d["k"]) * w_norm**(len(d["z"]) - len(d["p"]))
         num = np.poly(zc) * kc
         den = np.poly(pc)
-        return ct.tf(num, den)
-    wp_n = 2*np.pi*args.plant_corner / w_norm
-    G    = ct.tf([args.plant_dc * wp_n], [1.0, wp_n])
-    if args.tau_delay > 0:
-        G *= ct.tf([1.0], [args.tau_delay * w_norm, 1.0])
+        G = ct.tf(num, den)
+    else:    
+        wp_n = 2*np.pi*args.plant_corner / w_norm
+        G    = ct.tf([args.plant_dc * wp_n], [1.0, wp_n])
+        if args.tau_delay > 0:
+            G *= ct.tf([1.0], [args.tau_delay * w_norm, 1.0])
+    natural_dc = float(np.abs(G.dcgain()))
+    if natural_dc > 0:
+        G *= args.plant_dc / natural_dc
     return G
 
 
