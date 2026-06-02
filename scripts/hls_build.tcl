@@ -1,4 +1,9 @@
-open_project dy_cavity_relocker_2
+# -reset forces a clean re-synthesis every run. Without it, Vitis HLS reopens
+# the persisted build/hls_workspace project and its incremental dependency
+# tracking can miss value-only changes inside included headers (e.g. new
+# coefficients in hinf_coeffs.h), so it reuses the previously synthesized IP and
+# the bitstream ends up containing a stale controller.
+open_project -reset dy_cavity_relocker_2
 set_top dy_cavity_relocker_2
 
 set source_files [glob ../../src/*.cpp ../../src/*.h ../../src/*.hpp]
@@ -7,7 +12,7 @@ foreach file $source_files {
     add_files $file
 }
 
-open_solution "solution1" -flow_target vivado
+open_solution -reset "solution1" -flow_target vivado
 
 set_part {xc7z010clg400-1}
 
