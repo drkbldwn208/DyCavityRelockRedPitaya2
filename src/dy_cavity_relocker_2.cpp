@@ -113,6 +113,9 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
     #pragma HLS INTERFACE s_axilite port=dac1_offset
     #pragma HLS INTERFACE ap_none port=gpio_in
     #pragma HLS INTERFACE ap_ctrl_none port=return
+    #pragma HLS stable variable=servo_offset
+    #pragma HLS stable variable=servo_arm
+    #pragma HLS stable variable=dac1_offset
     #pragma HLS DATAFLOW
 
     hls::stream<fast_t> ch2_s;   
