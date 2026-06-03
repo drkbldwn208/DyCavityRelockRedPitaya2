@@ -10,6 +10,7 @@ struct ctrl_t  { short dac1; };          // every 128 cycles
 static const int DAC_MIN = -8192;
 static const int DAC_MAX = 8191;
 static short sat_dac(int x) {
+    #pragma HLS INLINE
     if (x < DAC_MIN) return DAC_MIN;
     if (x > DAC_MAX) return DAC_MAX;
     return (short)x;
