@@ -7,6 +7,14 @@ struct fast_t  { short ch2; };           // every cycle
 struct slow_t  { short d128; };          // every 128 cycles  
 struct ctrl_t  { short dac1; };          // every 128 cycles
 
+static const int DAC_MIN = -8192;
+static const int DAC_MAX = 8191;
+static short sat_dac(int x) {
+    if (x < DAC_MIN) return DAC_MIN;
+    if (x > DAC_MAX) return DAC_MAX;
+    return (short)x;
+}
+
 // Process 1: ADC + decimation. Same rate as input on ch2_s, gated on slow_s.
 static void front_end(hls::stream<axis_t> &adc_in,
                       hls::stream<fast_t> &ch2_s,
@@ -49,7 +57,8 @@ static void back_end(hls::stream<fast_t> &ch2_s,
                      hls::stream<axis_t> &dac_out,
                      volatile bool *gpio_in,
                      volatile int *servo_offset,
-                     volatile int *servo_arm) {
+                     volatile int *servo_arm,
+                     volatile int *dac1_offset) {
     static short dac1_held = 0;
     static State current_state = IDLE;
     static short held_voltage = 0;
@@ -75,9 +84,9 @@ static void back_end(hls::stream<fast_t> &ch2_s,
             break;
           }
         }
-
+        short dac1_v = sat_dac(dac1_held + *dac1_offset);
         axis_t o;
-        o.data = (((uint32_t)dac2_v & 0xFFFF) << 16) | ((uint32_t)dac1_held & 0xFFFF);
+        o.data = (((uint32_t)dac2_v & 0xFFFF) << 16) | ((uint32_t)dac1_v & 0xFFFF);
         o.keep = 0xF; o.strb = 0xF; o.last = 0;
         dac_out.write(o);
     }
@@ -87,7 +96,8 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
                           hls::stream<axis_t> &dac_out,
                           volatile bool *gpio_in,
                           volatile int *servo_offset,
-                          volatile int *servo_arm) {
+                          volatile int *servo_arm,
+                          volatile int *dac1_offset) {
     #pragma HLS INTERFACE axis port=adc_in
     #pragma HLS INTERFACE axis port=dac_out
     #pragma HLS INTERFACE s_axilite port=servo_offset
@@ -105,5 +115,5 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
 
     front_end(adc_in, ch2_s, slow_s);
     controller_stage(slow_s, ctrl_s);
-    back_end(ch2_s, ctrl_s, dac_out, gpio_in, servo_offset, servo_arm);
+    back_end(ch2_s, ctrl_s, dac_out, gpio_in, servo_offset, servo_arm, dac1_offset);
 }

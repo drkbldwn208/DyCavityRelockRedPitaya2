@@ -38,6 +38,12 @@ def parse_args():
     p.add_argument("--fs",           type=float, default=125e6/128, help="controller sample rate, Hz")
     p.add_argument("--out",          type=str,   default="K_zpk.npz")
     p.add_argument("--no-show",      action="store_true")
+    p.add_argument("--w1-second",      action="store_true" , help="Use second-order weight for w1")
+    p.add_argument("--w2-second",      action="store_true" , help="Use second-order weight for w2")
+    p.add_argument("--w2-hf", type=float, default=1.0, help="High-frequency gain for w2 (default 1.0)")
+    p.add_argument("--w3-hf", type=float, default=20.0, help="High-frequency gain for w3 (default 20.0)")
+    p.add_argument("--w3-second",      action="store_true" , help="Use second-order weight for w3")
+    p.add_argument("--w3-third",       action="store_true" , help="Use third-order weight for w3 (overrides --w3-second)")
     p.add_argument("--no-plant-dc-normalize", action="store_true",
                help="Use plant NPZ gain as-is instead of forcing DC gain to --plant-dc.")
     return p.parse_args()
@@ -98,9 +104,23 @@ def main():
     wn = lambda f: 2*np.pi*f / w_norm
     G_aug = build_plant(args, w_norm)
 
-    W1 = makeweight(args.w1_dc, wn(args.w1_corner), 0.5)
-    W2 = makeweight(args.w2_dc, wn(args.w2_corner), 1.0)
-    W3 = makeweight(args.w3_dc, wn(args.w3_corner), 20.0)
+    if args.w1_second:
+        W1 = makeweight(args.w1_dc, wn(args.w1_corner), 0.5) * makeweight(args.w1_dc, wn(args.w1_corner), 0.5)
+    else:
+        W1 = makeweight(args.w1_dc, wn(args.w1_corner), 0.5)
+
+    if args.w2_second:
+        W2 = makeweight(args.w2_dc, wn(args.w2_corner), args.w2_hf) * makeweight(args.w2_dc, wn(args.w2_corner), args.w2_hf)
+    else:
+        W2 = makeweight(args.w2_dc, wn(args.w2_corner), args.w2_hf)
+
+    if args.w3_second:
+        W3 = makeweight(args.w3_dc, wn(args.w3_corner), args.w3_hf) * makeweight(args.w3_dc, wn(args.w3_corner), args.w3_hf)
+    else:
+        if args.w3_third:
+            W3 = makeweight(args.w3_dc, wn(args.w3_corner), args.w3_hf) * makeweight(args.w3_dc, wn(args.w3_corner), args.w3_hf) * makeweight(args.w3_dc, wn(args.w3_corner), args.w3_hf)
+        else:
+            W3 = makeweight(args.w3_dc, wn(args.w3_corner), args.w3_hf)
     print(f"Target: xover ≈ {args.xover/1e3:.0f} kHz, |S|(DC) ≤ 1/{args.w1_dc:.0f}")
 
     t0 = time.time()
