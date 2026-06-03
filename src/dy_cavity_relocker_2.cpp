@@ -9,6 +9,7 @@ struct ctrl_t  { short dac1; };          // every 128 cycles
 
 static const int DAC_MIN = -8192;
 static const int DAC_MAX = 8191;
+static const int ADC_AVG_SHIFT = 27;     // 2^27 / 125 MHz = 1.074 s
 
 static short sat_dac14(int x) {
     #pragma HLS INLINE
@@ -25,14 +26,35 @@ static uint32_t dac14_word(short x) {
 // Process 1: ADC + decimation. Same rate as input on ch2_s, gated on slow_s.
 static void front_end(hls::stream<axis_t> &adc_in,
                       hls::stream<fast_t> &ch2_s,
-                      hls::stream<slow_t> &slow_s) {
+                      hls::stream<slow_t> &slow_s,
+                      int adc1_offset,
+                      int adc2_offset,
+                      volatile int *adc1_avg,
+                      volatile int *adc2_avg) {
     static int32_t acc4 = 0; static ap_uint<2> cnt4 = 0;
     static int64_t acc32 = 0; static ap_uint<5> cnt32 = 0;
+    static int64_t avg1_acc = 0, avg2_acc = 0;
+    static ap_uint<ADC_AVG_SHIFT> avg_cnt = 0;
     while (true) {
         #pragma HLS PIPELINE II=1
         axis_t v = adc_in.read();
-        short ch1 = (short)(v.data & 0xFFFF);
-        ch2_s.write({ (short)((v.data >> 16) & 0xFFFF) });
+        short ch1 = (short)((int)((short)(v.data & 0xFFFF)) + adc1_offset);
+        short ch2 = (short)((int)((short)((v.data >> 16) & 0xFFFF)) + adc2_offset);
+        ch2_s.write({ ch2 });
+
+        int64_t avg1_next = avg1_acc + ch1;
+        int64_t avg2_next = avg2_acc + ch2;
+        if (avg_cnt == ~((ap_uint<ADC_AVG_SHIFT>)0)) {
+            *adc1_avg = (int)(avg1_next >> ADC_AVG_SHIFT);
+            *adc2_avg = (int)(avg2_next >> ADC_AVG_SHIFT);
+            avg1_acc = 0;
+            avg2_acc = 0;
+            avg_cnt = 0;
+        } else {
+            avg1_acc = avg1_next;
+            avg2_acc = avg2_next;
+            avg_cnt++;
+        }
 
         acc4 += ch1;
         if (cnt4 == 3) {
@@ -65,7 +87,8 @@ static void back_end(hls::stream<fast_t> &ch2_s,
                      volatile bool *gpio_in,
                      volatile int *servo_offset,
                      volatile int *servo_arm,
-                     int dac1_offset) {
+                     int dac1_offset,
+                     int dac_zero) {
     static short dac1_held = 0;
     static State current_state = IDLE;
     static short held_voltage = 0;
@@ -94,7 +117,7 @@ static void back_end(hls::stream<fast_t> &ch2_s,
         // short dac1_v = sat_dac14((int)dac1_held + dac1_offset);
         // short dac2_v = sat_dac14(dac2_cmd);
         axis_t o;
-        o.data = (dac2_cmd << 16 ) | (dac1_held + dac1_offset);
+        o.data = dac_zero ? 0 : ((dac2_cmd << 16 ) | (dac1_held + dac1_offset));
         o.keep = 0xF; o.strb = 0xF; o.last = 0;
         dac_out.write(o);
     }
@@ -105,17 +128,30 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
                           volatile bool *gpio_in,
                           volatile int *servo_offset,
                           volatile int *servo_arm,
-                          int dac1_offset) {
+                          int dac1_offset,
+                          int adc1_offset,
+                          int adc2_offset,
+                          volatile int *adc1_avg,
+                          volatile int *adc2_avg,
+                          int dac_zero) {
     #pragma HLS INTERFACE axis port=adc_in
     #pragma HLS INTERFACE axis port=dac_out
     #pragma HLS INTERFACE s_axilite port=servo_offset
     #pragma HLS INTERFACE s_axilite port=servo_arm
     #pragma HLS INTERFACE s_axilite port=dac1_offset
+    #pragma HLS INTERFACE s_axilite port=adc1_offset
+    #pragma HLS INTERFACE s_axilite port=adc2_offset
+    #pragma HLS INTERFACE s_axilite port=adc1_avg
+    #pragma HLS INTERFACE s_axilite port=adc2_avg
+    #pragma HLS INTERFACE s_axilite port=dac_zero
     #pragma HLS INTERFACE ap_none port=gpio_in
     #pragma HLS INTERFACE ap_ctrl_none port=return
     #pragma HLS stable variable=servo_offset
     #pragma HLS stable variable=servo_arm
     #pragma HLS stable variable=dac1_offset
+    #pragma HLS stable variable=adc1_offset
+    #pragma HLS stable variable=adc2_offset
+    #pragma HLS stable variable=dac_zero
     #pragma HLS DATAFLOW
 
     hls::stream<fast_t> ch2_s;   
@@ -125,7 +161,7 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
     hls::stream<ctrl_t> ctrl_s;  
     #pragma HLS STREAM variable=ctrl_s depth=4
 
-    front_end(adc_in, ch2_s, slow_s);
+    front_end(adc_in, ch2_s, slow_s, adc1_offset, adc2_offset, adc1_avg, adc2_avg);
     controller_stage(slow_s, ctrl_s);
-    back_end(ch2_s, ctrl_s, dac_out, gpio_in, servo_offset, servo_arm, dac1_offset);
+    back_end(ch2_s, ctrl_s, dac_out, gpio_in, servo_offset, servo_arm, dac1_offset, dac_zero);
 }
