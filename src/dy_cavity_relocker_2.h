@@ -27,11 +27,11 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
                           volatile bool *gpio_in,
                           volatile int *servo_offset,
                           volatile int *servo_arm,
-                          int dac1_offset,
-                          int adc1_offset,
-                          int adc2_offset,
+                          volatile int *dac1_offset,
+                          volatile int *adc1_offset,
+                          volatile int *adc2_offset,
                           volatile int *adc1_avg,
                           volatile int *adc2_avg,
-                          int dac_zero);
+                          volatile int *dac_zero);
 
 #endif
