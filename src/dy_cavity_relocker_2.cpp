@@ -118,11 +118,11 @@ static void back_end(hls::stream<fast_t> &ch2_s,
             break;
           }
         }
-        // short dac1_v = sat_dac14((int)dac1_held + dac1_offset);
-        // short dac2_v = sat_dac14(dac2_cmd);
         axis_t o;
         int dac1_cmd = f.dac_zero ? f.dac1_offset : (dac1_held + f.dac1_offset);
-        o.data = (dac2_cmd << 16) | dac1_cmd;
+        short dac1_v = sat_dac14(dac1_cmd);
+        short dac2_v = sat_dac14(dac2_cmd);
+        o.data = (dac14_word(dac2_v) << 16) | dac14_word(dac1_v);
         o.keep = 0xF; o.strb = 0xF; o.last = 0;
         dac_out.write(o);
     }

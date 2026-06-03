@@ -13,6 +13,14 @@
 //   acc_t   Q24.40 (per-biquad accumulator; real headroom ±16 million)
 //   coeff_t Q3.29  (loaded from hinf_coeffs.h)
 //
+// Quantization mode:
+//   Use AP_TRN_ZERO rather than AP_TRN.  The controller can contain very
+//   low-frequency pole/zero cancellations from the H-infinity weights and
+//   discretization.  Plain signed truncation injects a one-sided bias into
+//   those nearly-cancelling states; truncation toward zero is less faithful
+//   in the last bit, but avoids a DC drift that is physically unrelated to
+//   the measured plant.
+//
 // On the DF-I overflow-cancellation property:
 //   DF-I has a known property that transient overflows of the internal
 //   accumulator cancel algebraically, PROVIDED the accumulator uses modulo
@@ -34,9 +42,9 @@
 
 #define HINF_COEF_TOTAL_BITS (HINF_COEF_INT_BITS + HINF_COEF_FRAC_BITS)
 
-typedef ap_fixed<16, 1,  AP_TRN, AP_SAT> sig_t;
-typedef ap_fixed<32, 12, AP_TRN, AP_SAT> pipe_t;
-typedef ap_fixed<64, 24, AP_TRN, AP_WRAP> acc_t;
+typedef ap_fixed<16, 1,  AP_TRN_ZERO, AP_SAT> sig_t;
+typedef ap_fixed<32, 12, AP_TRN_ZERO, AP_SAT> pipe_t;
+typedef ap_fixed<64, 24, AP_TRN_ZERO, AP_WRAP> acc_t;
 typedef ap_fixed<HINF_COEF_TOTAL_BITS, HINF_COEF_INT_BITS> coeff_t;
 
 
