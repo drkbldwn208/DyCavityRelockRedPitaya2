@@ -38,6 +38,8 @@ def parse_args():
     p.add_argument("--fs",           type=float, default=125e6/128, help="controller sample rate, Hz")
     p.add_argument("--out",          type=str,   default="K_zpk.npz")
     p.add_argument("--no-show",      action="store_true")
+    p.add_argument("--no-plant-dc-normalize", action="store_true",
+               help="Use plant NPZ gain as-is instead of forcing DC gain to --plant-dc.")
     return p.parse_args()
 
 
@@ -68,9 +70,10 @@ def build_plant(args, w_norm):
         G    = ct.tf([args.plant_dc * wp_n], [1.0, wp_n])
         if args.tau_delay > 0:
             G *= ct.tf([1.0], [args.tau_delay * w_norm, 1.0])
-    natural_dc = float(np.abs(G.dcgain()))
-    if natural_dc > 0:
-        G *= args.plant_dc / natural_dc
+    if not args.no_plant_dc_normalize:
+        natural_dc = float(np.abs(G.dcgain()))
+        if natural_dc > 0:
+            G *= args.plant_dc / natural_dc
     return G
 
 
