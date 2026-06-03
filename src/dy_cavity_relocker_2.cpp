@@ -9,11 +9,17 @@ struct ctrl_t  { short dac1; };          // every 128 cycles
 
 static const int DAC_MIN = -8192;
 static const int DAC_MAX = 8191;
-static short sat_dac(int x) {
+
+static short sat_dac14(int x) {
     #pragma HLS INLINE
     if (x < DAC_MIN) return DAC_MIN;
     if (x > DAC_MAX) return DAC_MAX;
     return (short)x;
+}
+
+static uint32_t dac14_word(short x) {
+    #pragma HLS INLINE
+    return ((uint32_t)x) & 0x3FFF;
 }
 
 // Process 1: ADC + decimation. Same rate as input on ch2_s, gated on slow_s.
@@ -59,7 +65,7 @@ static void back_end(hls::stream<fast_t> &ch2_s,
                      volatile bool *gpio_in,
                      volatile int *servo_offset,
                      volatile int *servo_arm,
-                     volatile int *dac1_offset) {
+                     int dac1_offset) {
     static short dac1_held = 0;
     static State current_state = IDLE;
     static short held_voltage = 0;
@@ -72,22 +78,23 @@ static void back_end(hls::stream<fast_t> &ch2_s,
 
         bool toggle = false;
         fsm_receiver(*gpio_in, toggle);
-        short dac2_v;
+        int dac2_cmd;
         switch (current_state) {
           case IDLE:
-            dac2_v = (short)(*servo_offset);
+            dac2_cmd = *servo_offset;
             if (*servo_arm && toggle) { current_state = SERVO; held_voltage = f.ch2; }
             break;
           case SERVO: default: {
             short err = f.ch2 - held_voltage;
-            dac2_v = (short)(*servo_offset + (err >> GAIN_RIGHT_SHIFT));
+            dac2_cmd = *servo_offset + (err >> GAIN_RIGHT_SHIFT);
             if (toggle) current_state = IDLE;
             break;
           }
         }
-        short dac1_v = sat_dac(dac1_held + *dac1_offset);
+        short dac1_v = sat_dac14((int)dac1_held + dac1_offset);
+        short dac2_v = sat_dac14(dac2_cmd);
         axis_t o;
-        o.data = (((uint32_t)dac2_v & 0xFFFF) << 16) | ((uint32_t)dac1_v & 0xFFFF);
+        o.data = (dac14_word(dac2_v) << 16) | dac14_word(dac1_v);
         o.keep = 0xF; o.strb = 0xF; o.last = 0;
         dac_out.write(o);
     }
@@ -98,7 +105,7 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
                           volatile bool *gpio_in,
                           volatile int *servo_offset,
                           volatile int *servo_arm,
-                          volatile int *dac1_offset) {
+                          int dac1_offset) {
     #pragma HLS INTERFACE axis port=adc_in
     #pragma HLS INTERFACE axis port=dac_out
     #pragma HLS INTERFACE s_axilite port=servo_offset
