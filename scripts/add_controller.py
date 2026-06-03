@@ -31,7 +31,7 @@ def main():
     # 2. Define the Controller Parameters
     Kp = 0.0       # Set to 0.0 to test the Pure Integrator mode
     Ki = 51.0
-    epsilon = 1e-2 # Very slow pole to safely approximate a pure integrator
+    epsilon = 1 # Very slow pole to safely approximate a pure integrator
 
     # 3. Formulate the ZPK based on Kp
     if Kp == 0:

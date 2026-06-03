@@ -1,14 +1,14 @@
 """
 Bit-accurate Python model of the HLS Direct-Form-I biquad cascade.
 
-Mirrors hinf_filter.hpp exactly:
+Mirrors hinf_filter.hpp:
   sig_t   Q1.15   (ADC/DAC words)
   pipe_t  Q12.20  (inter-stage; ±2048 real headroom)
   acc_t   Q24.40  (accumulator; ±16M headroom)
+  qmode   AP_TRN_ZERO
 
-The controller operates on pipe-scale integers internally; sig_t values are
-shifted up by PIPE_SHIFT = 20-15 = 5 on the way in, and shifted down +
-saturated to ±32767 on the way out.
+The controller operates on pipe-scale integers internally.  AP_TRN_ZERO is
+used to avoid one-sided truncation bias in near-DC pole/zero cancellations.
 
 Usage:
   python3 scripts/controller_fixedpoint_sim.py       # step response
@@ -21,6 +21,20 @@ import scipy.signal as sig
 
 PIPE_SHIFT = 5                     # Q12.20 - Q1.15
 SIG_MAX,  SIG_MIN  = 32767, -32768
+COEF_FRAC = 29
+PIPE_FRAC = 20
+ACC_FRAC = 40
+
+
+def qshift_zero(x, shift):
+    if shift <= 0:
+        return int(x) << (-shift)
+    scale = 1 << shift
+    return (abs(int(x)) // scale) * (1 if x >= 0 else -1)
+
+
+def sat_signed(x, bits):
+    return max(-(1 << (bits - 1)), min((1 << (bits - 1)) - 1, int(x)))
 
 
 def parse_hinf_coeffs(path):
@@ -49,21 +63,27 @@ def run_fixedpoint(sos_int, scale, x_sig, saturate_output=True):
     y_hist = np.zeros((n_sec, 2), dtype=np.int64)
     y_sig  = np.zeros_like(x_sig, dtype=np.int64)
 
+    product_shift = COEF_FRAC + PIPE_FRAC - ACC_FRAC
+    pipe_shift = ACC_FRAC - PIPE_FRAC
+
     for n in range(len(x_sig)):
         pipe = int(x_sig[n]) << PIPE_SHIFT
         for i, (b0, b1, b2, a1, a2) in enumerate(sos_int):
-            acc = (b0 * pipe
-                   + b1 * int(x_hist[i, 0])
-                   + b2 * int(x_hist[i, 1])
-                   - a1 * int(y_hist[i, 0])
-                   - a2 * int(y_hist[i, 1]))
-            pipe_out = acc // scale           # AP_TRN: floor toward -inf
+            terms = (
+                b0 * pipe,
+                b1 * int(x_hist[i, 0]),
+                b2 * int(x_hist[i, 1]),
+                -a1 * int(y_hist[i, 0]),
+                -a2 * int(y_hist[i, 1]),
+            )
+            acc = sum(qshift_zero(term, product_shift) for term in terms)
+            pipe_out = sat_signed(qshift_zero(acc, pipe_shift), 32)
             x_hist[i, 1] = x_hist[i, 0]
             x_hist[i, 0] = pipe
             y_hist[i, 1] = y_hist[i, 0]
             y_hist[i, 0] = pipe_out
             pipe = int(pipe_out)
-        out = pipe >> PIPE_SHIFT
+        out = qshift_zero(pipe, PIPE_SHIFT)
         if saturate_output:
             out = max(SIG_MIN, min(SIG_MAX, out))
         y_sig[n] = out
