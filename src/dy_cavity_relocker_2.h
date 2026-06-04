@@ -32,6 +32,7 @@ void dy_cavity_relocker_2(hls::stream<axis_t> &adc_in,
                           volatile int *adc2_offset,
                           volatile int *adc1_avg,
                           volatile int *adc2_avg,
-                          volatile int *dac_zero);
+                          volatile int *dac_zero,
+                          volatile int *dac1_invert);
 
 #endif

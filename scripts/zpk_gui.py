@@ -53,18 +53,36 @@ class RootGroup:
     shape: str
     freq_hz: float
     q: float = 0.707
+    real_hz: float | None = None
 
     def roots(self) -> list[complex]:
         freq_hz = max(float(self.freq_hz), 1e-12)
         if self.shape == "real":
             return [complex(-TWO_PI * freq_hz, 0.0)]
 
-        q = max(float(self.q), 0.500001)
         wn = TWO_PI * freq_hz
-        zeta = 1.0 / (2.0 * q)
-        sigma = -zeta * wn
-        wd = wn * math.sqrt(max(0.0, 1.0 - zeta * zeta))
+        if self.real_hz is None:
+            q = max(float(self.q), 0.500001)
+            sigma = -wn / (2.0 * q)
+        else:
+            sigma = -abs(float(self.real_hz)) * TWO_PI
+            if abs(sigma) >= wn:
+                sigma = -0.999999 * wn
+        wd = math.sqrt(max(0.0, wn * wn - sigma * sigma))
         return [complex(sigma, wd), complex(sigma, -wd)]
+
+    def pair_real_hz(self) -> float:
+        if self.shape == "real":
+            return -abs(float(self.freq_hz))
+        if self.real_hz is not None:
+            return -abs(float(self.real_hz))
+        return -float(self.freq_hz) / (2.0 * max(float(self.q), 0.500001))
+
+    def pair_q(self) -> float:
+        if self.shape == "real":
+            return float("nan")
+        real_hz = abs(self.pair_real_hz())
+        return max(0.500001, float(self.freq_hz) / (2.0 * max(real_hz, 1e-300)))
 
 
 def pair_to_freq_q(root: complex) -> tuple[float, float]:
@@ -152,6 +170,8 @@ class ZpkEditor(tk.Tk):
 
         self.role_var = tk.StringVar(value="pole")
         self.shape_var = tk.StringVar(value="pair")
+        self.pair_param_var = tk.StringVar(value="Q")
+        self.param_label_var = tk.StringVar(value="Q")
         self.freq_var = tk.StringVar(value="2500")
         self.q_var = tk.StringVar(value="10")
         self.freq_slider = tk.DoubleVar(value=math.log10(2500.0))
@@ -191,13 +211,14 @@ class ZpkEditor(tk.Tk):
         tree_box.grid(row=2, column=0, sticky="nsew", pady=(8, 0))
         side.rowconfigure(2, weight=1)
 
-        columns = ("role", "shape", "freq", "q")
+        columns = ("role", "shape", "freq", "q", "real")
         self.tree = ttk.Treeview(tree_box, columns=columns, show="headings", height=15, selectmode="browse")
         for col, label, width in (
             ("role", "Type", 54),
             ("shape", "Shape", 54),
-            ("freq", "Freq Hz", 92),
-            ("q", "Q", 62),
+            ("freq", "Freq Hz", 86),
+            ("q", "Q", 58),
+            ("real", "Re Hz", 70),
         ):
             self.tree.heading(col, text=label)
             self.tree.column(col, width=width, anchor="e" if col in {"freq", "q"} else "center")
@@ -215,13 +236,17 @@ class ZpkEditor(tk.Tk):
         ttk.Combobox(edit, textvariable=self.role_var, values=("pole", "zero"), width=8, state="readonly").grid(row=0, column=1, sticky="ew")
         ttk.Label(edit, text="Shape").grid(row=1, column=0, sticky="w")
         ttk.Combobox(edit, textvariable=self.shape_var, values=("real", "pair"), width=8, state="readonly").grid(row=1, column=1, sticky="ew")
-        ttk.Label(edit, text="Freq Hz").grid(row=2, column=0, sticky="w")
-        ttk.Entry(edit, textvariable=self.freq_var, width=12).grid(row=2, column=1, sticky="ew")
-        ttk.Label(edit, text="Q").grid(row=3, column=0, sticky="w")
-        ttk.Entry(edit, textvariable=self.q_var, width=12).grid(row=3, column=1, sticky="ew")
-        ttk.Scale(edit, variable=self.freq_slider, from_=0.0, to=6.0, orient="horizontal", command=self.on_freq_slider).grid(row=4, column=0, columnspan=2, sticky="ew", pady=(6, 0))
-        ttk.Scale(edit, variable=self.q_slider, from_=math.log10(0.51), to=math.log10(200.0), orient="horizontal", command=self.on_q_slider).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(4, 0))
-        ttk.Button(edit, text="Apply Root", command=self.apply_root).grid(row=6, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        ttk.Label(edit, text="Pair field").grid(row=2, column=0, sticky="w")
+        pair_mode = ttk.Combobox(edit, textvariable=self.pair_param_var, values=("Q", "Re Hz"), width=8, state="readonly")
+        pair_mode.grid(row=2, column=1, sticky="ew")
+        pair_mode.bind("<<ComboboxSelected>>", self.on_pair_param_mode)
+        ttk.Label(edit, text="Freq Hz").grid(row=3, column=0, sticky="w")
+        ttk.Entry(edit, textvariable=self.freq_var, width=12).grid(row=3, column=1, sticky="ew")
+        ttk.Label(edit, textvariable=self.param_label_var).grid(row=4, column=0, sticky="w")
+        ttk.Entry(edit, textvariable=self.q_var, width=12).grid(row=4, column=1, sticky="ew")
+        ttk.Scale(edit, variable=self.freq_slider, from_=0.0, to=6.0, orient="horizontal", command=self.on_freq_slider).grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        ttk.Scale(edit, variable=self.q_slider, from_=math.log10(0.51), to=math.log10(200.0), orient="horizontal", command=self.on_q_slider).grid(row=6, column=0, columnspan=2, sticky="ew", pady=(4, 0))
+        ttk.Button(edit, text="Apply Root", command=self.apply_root).grid(row=7, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
         add = ttk.Frame(side)
         add.grid(row=4, column=0, sticky="ew", pady=(8, 0))
@@ -360,8 +385,14 @@ class ZpkEditor(tk.Tk):
     def refresh_tree(self) -> None:
         self.tree.delete(*self.tree.get_children())
         for idx, group in enumerate(self.groups):
-            q_text = "" if group.shape == "real" else f"{group.q:.4g}"
-            self.tree.insert("", "end", iid=str(idx), values=(group.role, group.shape, f"{group.freq_hz:.6g}", q_text))
+            q_text = "" if group.shape == "real" else f"{group.pair_q():.4g}"
+            real_text = "" if group.shape == "real" else f"{group.pair_real_hz():.6g}"
+            self.tree.insert(
+                "",
+                "end",
+                iid=str(idx),
+                values=(group.role, group.shape, f"{group.freq_hz:.6g}", q_text, real_text),
+            )
 
     def on_select(self, _event=None) -> None:
         sel = self.tree.selection()
@@ -371,10 +402,30 @@ class ZpkEditor(tk.Tk):
         group = self.groups[int(sel[0])]
         self.role_var.set(group.role)
         self.shape_var.set(group.shape)
+        self.pair_param_var.set("Re Hz" if group.real_hz is not None else "Q")
         self.freq_var.set(f"{group.freq_hz:.12g}")
-        self.q_var.set(f"{group.q:.12g}")
+        self.sync_pair_param_field(group)
         self.freq_slider.set(math.log10(max(group.freq_hz, 1.0)))
-        self.q_slider.set(math.log10(max(group.q, 0.51)))
+
+    def sync_pair_param_field(self, group: RootGroup) -> None:
+        if self.pair_param_var.get() == "Re Hz":
+            self.param_label_var.set("Re Hz")
+            self.q_var.set(f"{group.pair_real_hz():.12g}")
+            self.q_slider.configure(from_=math.log10(1e-3), to=math.log10(100_000.0))
+            self.q_slider.set(math.log10(max(abs(group.pair_real_hz()), 1e-3)))
+        else:
+            self.param_label_var.set("Q")
+            self.q_var.set(f"{group.pair_q():.12g}")
+            self.q_slider.configure(from_=math.log10(0.51), to=math.log10(200.0))
+            self.q_slider.set(math.log10(max(group.pair_q(), 0.51)))
+
+    def on_pair_param_mode(self, _event=None) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            self.param_label_var.set(self.pair_param_var.get())
+            return
+        group = self.groups[int(sel[0])]
+        self.sync_pair_param_field(group)
 
     def on_freq_slider(self, _value=None) -> None:
         freq = 10.0 ** float(self.freq_slider.get())
@@ -382,8 +433,11 @@ class ZpkEditor(tk.Tk):
         self.apply_root(show_errors=False)
 
     def on_q_slider(self, _value=None) -> None:
-        q = 10.0 ** float(self.q_slider.get())
-        self.q_var.set(f"{q:.7g}")
+        value = 10.0 ** float(self.q_slider.get())
+        if self.pair_param_var.get() == "Re Hz":
+            self.q_var.set(f"{-value:.7g}")
+        else:
+            self.q_var.set(f"{value:.7g}")
         self.apply_root(show_errors=False)
 
     def apply_gain(self, show_errors: bool = True) -> None:
@@ -401,21 +455,34 @@ class ZpkEditor(tk.Tk):
         try:
             idx = int(self.selected_iid)
             freq_hz = float(self.freq_var.get())
-            q = float(self.q_var.get())
+            pair_value = float(self.q_var.get())
             if freq_hz <= 0:
                 raise ValueError("Frequency must be positive")
-            if self.shape_var.get() == "pair" and q <= 0.5:
-                raise ValueError("Complex-pair Q must be > 0.5")
+            if self.shape_var.get() == "pair":
+                if self.pair_param_var.get() == "Q" and pair_value <= 0.5:
+                    raise ValueError("Complex-pair Q must be > 0.5")
+                if self.pair_param_var.get() == "Re Hz" and abs(pair_value) <= 0:
+                    raise ValueError("Complex-pair Re Hz must be nonzero")
+                if self.pair_param_var.get() == "Re Hz" and abs(pair_value) >= freq_hz:
+                    raise ValueError("|Re Hz| must be smaller than Freq Hz for a complex pair")
         except Exception as exc:
             if show_errors:
                 messagebox.showerror("Bad root", str(exc))
             return
 
+        if self.shape_var.get() == "pair" and self.pair_param_var.get() == "Re Hz":
+            real_hz = -abs(pair_value)
+            q = max(0.500001, freq_hz / (2.0 * abs(real_hz)))
+        else:
+            real_hz = None
+            q = max(pair_value, 0.500001)
+
         self.groups[idx] = RootGroup(
             role=self.role_var.get(),
             shape=self.shape_var.get(),
             freq_hz=freq_hz,
-            q=max(q, 0.500001),
+            q=q,
+            real_hz=real_hz,
         )
         self.refresh_tree()
         self.tree.selection_set(str(idx))
@@ -425,11 +492,19 @@ class ZpkEditor(tk.Tk):
     def add_root(self, role: str, shape: str) -> None:
         try:
             freq_hz = float(self.freq_var.get())
-            q = float(self.q_var.get())
+            pair_value = float(self.q_var.get())
         except ValueError:
             freq_hz = 2500.0
-            q = 10.0
-        self.groups.append(RootGroup(role=role, shape=shape, freq_hz=max(freq_hz, 1e-12), q=max(q, 0.500001)))
+            pair_value = 10.0
+        if shape == "pair" and self.pair_param_var.get() == "Re Hz":
+            real_hz = -min(abs(pair_value), max(freq_hz * 0.99, 1e-12))
+            q = max(0.500001, freq_hz / (2.0 * abs(real_hz)))
+        else:
+            real_hz = None
+            q = max(pair_value, 0.500001)
+        self.groups.append(
+            RootGroup(role=role, shape=shape, freq_hz=max(freq_hz, 1e-12), q=q, real_hz=real_hz)
+        )
         self.refresh_tree()
         iid = str(len(self.groups) - 1)
         self.tree.selection_set(iid)
