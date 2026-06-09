@@ -29,6 +29,10 @@ def parse_args():
     p.add_argument("--plant-dc",     type=float, default=1.0,  help="plant DC gain")
     p.add_argument("--tau-delay",    type=float, default=0.5e-6, help="first-order delay, s")
     p.add_argument("--plant-npz",    type=str,   default=None, help="override plant from bode_fit ZPK npz")
+    p.add_argument("--plant-proper-pole", type=float, default=None,
+                   help="Hz for auto-added real pole(s) if plant NPZ is non-proper; default 20*xover")
+    p.add_argument("--no-auto-properize-plant", action="store_true",
+                   help="raise an error instead of adding high-frequency pole(s) to non-proper plant fits")
     p.add_argument("--w1-dc",        type=float, default=30.0)
     p.add_argument("--w1-corner",    type=float, default=15e3)
     p.add_argument("--w2-dc",        type=float, default=1e-3)
@@ -68,6 +72,22 @@ def build_plant(args, w_norm):
         zc = d["z"] / w_norm
         pc = d["p"] / w_norm
         kc = float(d["k"]) * w_norm**(len(d["z"]) - len(d["p"]))
+        excess_zeros = len(zc) - len(pc)
+        if excess_zeros > 0:
+            if args.no_auto_properize_plant:
+                raise ValueError(
+                    f"Plant NPZ is non-proper: {len(zc)} zeros, {len(pc)} poles. "
+                    "Add high-frequency rolloff pole(s), refit with relative degree >= 0, "
+                    "or omit --no-auto-properize-plant."
+                )
+            pole_hz = args.plant_proper_pole or (20.0 * args.xover)
+            rolloff_poles = -2*np.pi*pole_hz / w_norm * np.ones(excess_zeros)
+            pc = np.concatenate([pc, rolloff_poles])
+            kc *= float(np.prod(-rolloff_poles))
+            print(
+                f"Plant NPZ is non-proper ({len(zc)}z/{len(d['p'])}p); "
+                f"added {excess_zeros} real rolloff pole(s) at {pole_hz:g} Hz."
+            )
         num = np.poly(zc) * kc
         den = np.poly(pc)
         G = ct.tf(num, den)
